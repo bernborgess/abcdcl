@@ -1,4 +1,4 @@
-# Atila - Bernardo - CDCL(T) SAT Solver
+# Atila - Bernardo - CDCL SAT Solver
 
 This project implements a **Conflict-Driven Clause Learning (CDCL)** SAT solver with support for the **two-watched literals** optimization. The solver reads input in DIMACS CNF format and outputs whether the formula is satisfiable or unsatisfiable, along with a satisfying assignment if one exists.
 
