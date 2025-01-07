@@ -29,6 +29,7 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>) -> CdclResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use Assignment::*;
     use CdclResult::*;
 
     #[test]
@@ -43,8 +44,31 @@ mod tests {
         match result {
             UNSAT => panic!("Expected SAT"),
             SAT(assign) => {
-                println!("Oh cool. {:?}", assign);
+                assert_eq!(assign.len(), 1);
+                assert_eq!(assign[0], T);
             }
+        }
+    }
+
+    #[test]
+    fn two_cnf_is_sat() {
+        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2]]);
+        match result {
+            UNSAT => panic!("Expected SAT"),
+            SAT(assign) => {
+                assert_eq!(assign.len(), 2);
+                // Either [T,F] or [F,T]
+                assert!(assign == vec![T, F] || assign == vec![F, T]);
+            }
+        }
+    }
+
+    #[test]
+    fn two_cnf_is_unsat() {
+        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2], vec![1, -2]]);
+        match result {
+            UNSAT => (),
+            SAT(_) => panic!("Expected UNSAT"),
         }
     }
 }
