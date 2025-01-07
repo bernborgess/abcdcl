@@ -1,11 +1,11 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Assignment {
     U,
     T,
     F,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CdclResult {
     UNSAT,
     SAT(Vec<Assignment>),
@@ -24,4 +24,27 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>) -> CdclResult {
     //     if (!decide()) returns SAT; // All vars assigned
     // }
     CdclResult::UNSAT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use CdclResult::*;
+
+    #[test]
+    fn empty_cnf_is_unsat() {
+        let result = run_cdcl(vec![]);
+        assert_eq!(result, UNSAT);
+    }
+
+    #[test]
+    fn single_cnf_is_sat() {
+        let result = run_cdcl(vec![vec![1]]);
+        match result {
+            UNSAT => panic!("Expected SAT"),
+            SAT(assign) => {
+                println!("Oh cool. {:?}", assign);
+            }
+        }
+    }
 }
