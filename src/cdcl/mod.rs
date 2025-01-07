@@ -1,5 +1,5 @@
 // TODO: Change cnf data structure
-pub fn run_cdcl(cnf: ()) {
+pub fn run_cdcl(cnf: Vec<Vec<i64>>) {
     println!("TODO: cdcl run {:?}", cnf);
     // while(true){
     //     while (propagate_gives_conflict()){
