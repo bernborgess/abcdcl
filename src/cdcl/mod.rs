@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Assignment {
     U,
     T,
@@ -13,7 +13,7 @@ enum Seen {
     SeenBoth,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CdclResult {
     UNSAT,
     SAT(Vec<Assignment>),
@@ -50,7 +50,7 @@ struct Cdcl {
     confliting: Option<Vec<i64>>,
 }
 
-impl Cdcl{
+impl Cdcl {
     fn new(cnf: Vec<Vec<i64>>, lits: usize) -> Cdcl {
         Cdcl {
             partial_model: vec![],
@@ -73,8 +73,8 @@ impl Cdcl{
                         Seen::SeenNegative => Seen::SeenNegative,
                         Seen::SeenBoth => Seen::SeenBoth,
                     };
-                } else if *lit>0{
-                    let index = (lit-1) as usize;
+                } else if *lit > 0 {
+                    let index = (lit - 1) as usize;
                     seen_status[index] = match seen_status[index] {
                         Seen::Unseen => Seen::SeenPositive,
                         Seen::SeenPositive => Seen::SeenPositive,
@@ -86,7 +86,7 @@ impl Cdcl{
                 }
             }
         }
-        for (index, status) in seen_status.iter().enumerate(){
+        for (index, status) in seen_status.iter().enumerate() {
             match status {
                 Seen::Unseen => (),
                 Seen::SeenPositive => self.partial_model.push(
@@ -137,5 +137,51 @@ impl Cdcl{
     fn decide(&self) -> bool {
         println!("TODO: decide");
         false
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use Assignment::*;
+    use CdclResult::*;
+
+    #[test]
+    fn empty_cnf_is_unsat() {
+        let result = run_cdcl(vec![], 0);
+        assert_eq!(result, UNSAT);
+    }
+
+    #[test]
+    fn single_cnf_is_sat() {
+        let result = run_cdcl(vec![vec![1]], 1);
+        match result {
+            UNSAT => panic!("Expected SAT"),
+            SAT(assign) => {
+                assert_eq!(assign.len(), 1);
+                assert_eq!(assign[0], T);
+            }
+        }
+    }
+
+    #[test]
+    fn two_cnf_is_sat() {
+        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2]], 2);
+        match result {
+            UNSAT => panic!("Expected SAT"),
+            SAT(assign) => {
+                assert_eq!(assign.len(), 2);
+                // Either [T,F] or [F,T]
+                assert!(assign == vec![T, F] || assign == vec![F, T]);
+            }
+        }
+    }
+
+    #[test]
+    fn two_cnf_is_unsat() {
+        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2], vec![1, -2]], 2);
+        match result {
+            UNSAT => (),
+            SAT(_) => panic!("Expected UNSAT"),
+        }
     }
 }
