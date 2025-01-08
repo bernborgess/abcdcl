@@ -22,14 +22,8 @@ pub enum CdclResult {
 // TODO: Change cnf data structure
 pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     println!("TODO: cdcl run {:?}", cnf);
-    let solver = Cdcl::new(cnf, lits);
-    /*
-    for clause in cnf.iter(){
-        for lit in i.iter(){
-            
-        }
-    }
-    */
+    let mut solver = Cdcl::new(cnf, lits);
+    solver.pure();
     // while(true){
     //     while (propagate_gives_conflict()){
     //         if (decision_level==0) return UNSAT;
@@ -37,32 +31,38 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     //     }
     //     restart_if_applicable();
     //     remove_lemmas_if_applicable();
-    //     if (!decide()) returns SAT; // All vars assigned
+    //     if (!decide()) returns SAT(self.format()); // All vars assigned
     // }
     CdclResult::UNSAT
 }
+
 struct InnerAssignment{
+    literal: usize,
     asgn: Assignment,
     decision_level: usize,
 }
 
 struct Cdcl {
     partial_model: Vec<InnerAssignment>,
+    highest_decision_level: usize,
     clauses: Vec<Vec<i64>>,
-    lits: usize,
+    number_of_lits: usize,
+    confliting: Option<Vec<i64>>,
 }
 
 impl Cdcl{
     fn new(cnf: Vec<Vec<i64>>, lits: usize) -> Cdcl {
         Cdcl {
             partial_model: vec![],
+            highest_decision_level: 0,
             clauses: cnf,
-            lits,
+            number_of_lits: lits,
+            confliting: None,
         }
     }
 
     fn pure(&mut self) -> () {
-        let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.lits]; 
+        let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.number_of_lits]; 
         for clause in self.clauses.iter(){
             for lit in clause.iter(){
                 if *lit<0{
@@ -89,16 +89,37 @@ impl Cdcl{
         for (index, status) in seen_status.iter().enumerate(){
             match status {
                 Seen::Unseen => (),
-                Seen::SeenPositive => self.partial_model.push(InnerAssignment{asgn: Assignment::T, decision_level: 0}),
-                Seen::SeenNegative => self.partial_model.push(InnerAssignment{asgn: Assignment::F, decision_level: 0}),
+                Seen::SeenPositive => self.partial_model.push(
+                    InnerAssignment{
+                        literal: index, 
+                        asgn: Assignment::T, 
+                        decision_level: 0
+                    }
+                ),
+                Seen::SeenNegative => self.partial_model.push(    
+                    InnerAssignment{
+                        literal: index,
+                        asgn: Assignment::F, 
+                        decision_level: 0
+                    }
+                ),
                 Seen::SeenBoth => (),
             }
         }
     }
 
-    fn propagate_gives_conflict(&self) -> bool {
-        println!("TODO: propagate_gives_conflict");
-        false
+    fn propagate_gives_conflict(&mut self) -> bool {
+        self.propagate();
+        return (self.confliting != None)
+    }
+
+    fn propagate(&mut self){
+        println!("TODO: propagate");
+    }
+
+    fn format(&self) -> Vec<Assignment> {
+        println!("TODO: format");
+        vec![]
     }
 
     fn analyze_conflict(&self) {
