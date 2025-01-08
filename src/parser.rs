@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 
 // TODO: Return the datastructure we want to work with
-pub fn read_cnf() -> Vec<Vec<i64>> {
+pub fn read_cnf() -> (Vec<Vec<i64>>, usize) {
     let args: Vec<String> = env::args().collect();
     let dimacs_filename = args[1].as_str();
     let contents = fs::read_to_string(dimacs_filename).expect("Couldn't find the DIMACS file ");
@@ -32,5 +32,5 @@ pub fn read_cnf() -> Vec<Vec<i64>> {
         println!();
         cnf_vec.push(clause_vec);
     }
-    cnf_vec
+    (cnf_vec, num_vars.try_into().unwrap())
 }
