@@ -1,0 +1,21 @@
+#!/bin/bash
+
+cd test
+
+instances=(
+  "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/AIM/aim.tar.gz"
+  "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/LRAN/f.tar.gz"
+  "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/JNH/jnh.tar.gz"
+  "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/DUBOIS/dubois.tar.gz"
+)
+
+for inst in "${instances[@]}"; do
+  filename=$(basename "$inst")
+  if [ ! -f "$filename" ]; then
+    echo "Downloading $filename..."
+    wget "$inst"
+  else
+    echo "$filename already exists, skipping download."
+  fi
+  tar xfz "$filename"
+done

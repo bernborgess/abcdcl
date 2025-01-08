@@ -1,0 +1,6 @@
+*.cnf
+*.tar.gz
+*.tar.gz.*
+
+!ex1.cnf
+
