@@ -5,6 +5,14 @@ pub enum Assignment {
     F,
 }
 
+#[derive(Clone, Debug)]
+enum Seen {
+    Unseen,
+    SeenPositive,
+    SeenNegative,
+    SeenBoth,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum CdclResult {
     UNSAT,
@@ -12,8 +20,16 @@ pub enum CdclResult {
 }
 
 // TODO: Change cnf data structure
-pub fn run_cdcl(cnf: Vec<Vec<i64>>) -> CdclResult {
+pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     println!("TODO: cdcl run {:?}", cnf);
+    let solver = Cdcl::new(cnf, lits);
+    /*
+    for clause in cnf.iter(){
+        for lit in i.iter(){
+
+        }
+    }
+    */
     // while(true){
     //     while (propagate_gives_conflict()){
     //         if (decision_level==0) return UNSAT;
@@ -25,7 +41,89 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>) -> CdclResult {
     // }
     CdclResult::UNSAT
 }
+struct InnerAssignment {
+    asgn: Assignment,
+    decision_level: usize,
+}
 
+struct Cdcl {
+    partial_model: Vec<InnerAssignment>,
+    clauses: Vec<Vec<i64>>,
+    lits: usize,
+}
+
+impl Cdcl {
+    fn new(cnf: Vec<Vec<i64>>, lits: usize) -> Cdcl {
+        Cdcl {
+            partial_model: vec![],
+            clauses: cnf,
+            lits,
+        }
+    }
+
+    fn pure(&mut self) -> () {
+        let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.lits];
+        for clause in self.clauses.iter() {
+            for lit in clause.iter() {
+                if *lit < 0 {
+                    let index = (-lit - 1) as usize;
+                    seen_status[index] = match seen_status[index] {
+                        Seen::Unseen => Seen::SeenNegative,
+                        Seen::SeenPositive => Seen::SeenBoth,
+                        Seen::SeenNegative => Seen::SeenNegative,
+                        Seen::SeenBoth => Seen::SeenBoth,
+                    };
+                } else if *lit > 0 {
+                    let index = (lit - 1) as usize;
+                    seen_status[index] = match seen_status[index] {
+                        Seen::Unseen => Seen::SeenPositive,
+                        Seen::SeenPositive => Seen::SeenPositive,
+                        Seen::SeenNegative => Seen::SeenBoth,
+                        Seen::SeenBoth => Seen::SeenBoth,
+                    };
+                } else {
+                    panic!("0 in clause!!!!\nThis is not a valid CNF");
+                }
+            }
+        }
+        for (index, status) in seen_status.iter().enumerate() {
+            match status {
+                Seen::Unseen => (),
+                Seen::SeenPositive => self.partial_model.push(InnerAssignment {
+                    asgn: Assignment::T,
+                    decision_level: 0,
+                }),
+                Seen::SeenNegative => self.partial_model.push(InnerAssignment {
+                    asgn: Assignment::F,
+                    decision_level: 0,
+                }),
+                Seen::SeenBoth => (),
+            }
+        }
+    }
+
+    fn propagate_gives_conflict(&self) -> bool {
+        println!("TODO: propagate_gives_conflict");
+        false
+    }
+
+    fn analyze_conflict(&self) {
+        println!("TODO: analyze_conflict");
+    }
+
+    fn restart_if_applicable(&self) {
+        println!("TODO: restart_if_applicable");
+    }
+
+    fn remove_lemmas_if_applicable(&self) {
+        println!("TODO: remove_lemmas_if_applicable");
+    }
+
+    fn decide(&self) -> bool {
+        println!("TODO: decide");
+        false
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
