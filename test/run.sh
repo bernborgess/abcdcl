@@ -20,10 +20,10 @@ if [ ! -f "./minisat" ]; then
 fi
 
 benchmarks=(
-#   "f" # all SAT
-#   "dubois" # all UNSAT
-    "aim" # 48 SAT, 24 UNSAT
-#   "jnh" # 16 SAT, 24 UNSAT
+#    "f" # all SAT -> f benchmark is too huge, can't run locally.
+   "dubois" # all UNSAT
+   "aim" # 48 SAT, 24 UNSAT
+   "jnh" # 16 SAT, 24 UNSAT
 )
 
 for bm in "${benchmarks[@]}"; do

@@ -4,7 +4,7 @@ cd test
 
 instances=(
   "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/AIM/aim.tar.gz"
-  "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/LRAN/f.tar.gz"
+#  "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/LRAN/f.tar.gz" This benchmark is too huge to run locally.
   "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/JNH/jnh.tar.gz"
   "https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/DIMACS/DUBOIS/dubois.tar.gz"
 )
