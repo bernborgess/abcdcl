@@ -44,19 +44,22 @@ struct InnerAssignment{
 
 struct Cdcl {
     partial_model: Vec<InnerAssignment>,
-    highest_decision_level: usize,
     clauses: Vec<Vec<i64>>,
+    confliting_literals: Vec<usize>,
     number_of_lits: usize,
+    decision_level: usize,
     confliting: Option<Vec<i64>>,
 }
 
 impl Cdcl {
     fn new(cnf: Vec<Vec<i64>>, lits: usize) -> Cdcl {
+        let n = cnf.len();
         Cdcl {
             partial_model: vec![],
-            highest_decision_level: 0,
             clauses: cnf,
+            confliting_literals: vec![0;n],
             number_of_lits: lits,
+            decision_level: 0,
             confliting: None,
         }
     }
@@ -113,8 +116,23 @@ impl Cdcl {
         return (self.confliting != None)
     }
 
-    fn propagate(&mut self){
-        println!("TODO: propagate");
+    fn propagate(&mut self, lit: i64){
+        let asgn;
+        if lit<0{
+            asgn = InnerAssignment{
+                literal: -lit as usize, 
+                asgn: Assignment::F, 
+                decision_level: self.decision_level
+            }
+        } else {
+            asgn = InnerAssignment{
+                literal: lit as usize, 
+                asgn: Assignment::T, 
+                decision_level: self.decision_level
+            }
+        }
+
+        self.partial_model.push(asgn);
     }
 
     fn format(&self) -> Vec<Assignment> {
@@ -138,6 +156,8 @@ impl Cdcl {
         println!("TODO: decide");
         false
     }
+
+    
 }
 #[cfg(test)]
 mod tests {
