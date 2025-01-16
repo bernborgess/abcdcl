@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 
 // TODO: Return the datastructure we want to work with
-pub fn read_cnf() {
+pub fn read_cnf() -> (Vec<Vec<i64>>, usize) {
     let args: Vec<String> = env::args().collect();
     let dimacs_filename = args[1].as_str();
     let contents = fs::read_to_string(dimacs_filename).expect("Couldn't find the DIMACS file ");
@@ -16,15 +16,21 @@ pub fn read_cnf() {
         "Working with {num_vars} variables and {} clauses.",
         clauses.len()
     );
+    let mut cnf_vec: Vec<Vec<i64>> = vec![];
     for clause in clauses.iter() {
+        let mut clause_vec = Vec::new();
         for l in clause.lits().iter() {
             let b = match l.sign() {
                 Sign::Neg => false,
                 Sign::Pos => true,
             };
             print!("{}{} ", if b { "+" } else { "-" }, l.var().to_u64());
+            let val: i64 = l.var().to_u64() as i64;
+            // add this lit to the clause at the right idx
+            clause_vec.push(if b { val } else { -val });
         }
-        // comment
         println!();
+        cnf_vec.push(clause_vec);
     }
+    (cnf_vec, num_vars.try_into().unwrap())
 }
