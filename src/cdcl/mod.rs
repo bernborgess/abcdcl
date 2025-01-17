@@ -112,8 +112,8 @@ impl Cdcl {
     }
 
     fn propagate_gives_conflict(&mut self) -> bool {
-        self.propagate();
-        return (self.confliting != None)
+        self.propagate(1);
+        return self.confliting != None
     }
 
     fn propagate(&mut self, lit: i64){
