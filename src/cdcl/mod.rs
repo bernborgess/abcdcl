@@ -7,6 +7,11 @@ struct OccurLists{
     negative: Vec<Vec<usize>>,// negative[k] contém os índices das cláusulas que têm o literal -(k+1)
 }                             // indexação em base 0 😞😞😞
 
+enum Watcher{
+    Unit(i64),
+    New(i64)
+}
+
 impl OccurLists{
     fn new(n: usize) -> OccurLists{
         OccurLists{
@@ -14,6 +19,32 @@ impl OccurLists{
             negative: vec![Vec::new();n],
         }
     }
+
+    fn get(&self, n: i64) -> &Vec<usize>{
+        let ind = (n as usize)-1;
+        if n<0{
+            &self.negative[ind]
+        } else {
+            &self.positive[ind]
+        }
+    }
+
+    fn get_mut(&mut self, n: i64) -> &mut Vec<usize>{
+        let ind = (n as usize)-1;
+        if n<0{
+            &mut self.negative[ind]
+        } else {
+            &mut self.positive[ind]
+        }
+    }
+
+    fn lit_saw_in_clause(&mut self, lit: i64, clause: usize){
+        self.get_mut(lit).push(clause);
+    }
+}
+
+struct WatcherUptate{
+    to_Watch: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -42,32 +73,37 @@ struct Clause{
 impl Clause{
     pub fn new(arr: Vec<Vec<i64>>) -> Vec<Clause>{
         arr.into_iter()
-            .map(|v| Clause {data: v, watch_ptr: [0, 1] })
+            .map(|v| Clause {data: v, watch_ptr: [0, 1]})
             .collect()
     }
 
-    fn watch(&mut self, lit: i64) -> bool{
-        if self.pointer(0) == lit{
+    fn watch(&mut self, lit: i64) -> Watcher{
+        if self.point(0) == lit{
             self.next(0)
-        } else if self.pointer(1) == lit {
+        } else if self.point(1) == lit {
             self.next(1)
         } else { 
             panic!("There's only 2 pointers")
         }
     }
 
-    fn pointer(&self, i: usize) -> i64{
+    fn point(&self, i: usize) -> i64{
         self.data[self.watch_ptr[i]]
     }
 
-    fn next(&mut self, i: usize) -> bool{                                // retorna true quando um ponteiro ultrapassa o array,
-        let max_pointer = if self.watch_ptr[0]<self.watch_ptr[1] {// e portanto a cláusula se torna unidade e seu último literal pode ser propagado
+    fn next(&mut self, i: usize) -> Watcher{
+        let max_pointer = if self.watch_ptr[0]<self.watch_ptr[1] {
             self.watch_ptr[1]
         } else {
             self.watch_ptr[0]
         };
+        
         self.watch_ptr[i] = max_pointer+1;
-        self.watch_ptr[i]==self.data.len()
+        if self.watch_ptr[i]==self.data.len(){// o ponteiro ultrapassa o array, retorna None
+            Watcher::Unit(self.point((i+1)%2))
+        } else {
+            Watcher::New(self.point(i))               // retorna o novo literal vigiado
+        }
     }
 }
 
@@ -99,10 +135,10 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     solver.pre_process(); //aplica a regra PURE e outros truques de pré-processamento
     //solver.propagate_trusted_assignment();
     while true {
-    //     while (propagate_gives_conflict()){
+        while (propagate_gives_conflict()){
     //         if (decision_level==0) return UNSAT;
     //         else analyze_conflict();
-    //     }
+         }
     //     restart_if_applicable();
     //     remove_lemmas_if_applicable();
     //     if (!decide()) returns SAT(self.format()); // All vars assigned
@@ -207,21 +243,22 @@ impl Cdcl {
             }*/
             //if !clause_is_tautology{ 
             // Vou supor que não vão existir cláusulas triviais (ex: 1 -1 2 -4 0) em nossos casos de teste pelo bem da minha sanidade
-                for (i, lit) in clause.data.iter().enumerate(){ 
-                    if *lit<0{                        
+                for (i, &lit) in clause.data.iter().enumerate(){
+                    let list = occur_lists.get_mut(lit); 
+                    if lit<0{                        
                         let index = (-lit-1) as usize;
                         // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
-                        if i<2 {occur_lists.negative[index].push(clause_ind);}
+                        if i<2 {list.push(clause_ind);}
                         seen_status[index] = match seen_status[index] {
                             Seen::Unseen => Seen::SeenNegative,
                             Seen::SeenPositive => Seen::SeenBoth,
                             Seen::SeenNegative => Seen::SeenNegative,
                             Seen::SeenBoth => Seen::SeenBoth,
                         };
-                    } else if *lit > 0 {
+                    } else if lit > 0 {
                         let index = (lit-1) as usize;
                         // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
-                        if i<2 {occur_lists.positive[index].push(clause_ind);}
+                        if i<2 {list.push(clause_ind);}
                         seen_status[index] = match seen_status[index] {
                             Seen::Unseen => Seen::SeenPositive,
                             Seen::SeenPositive => Seen::SeenPositive,
@@ -270,23 +307,26 @@ impl Cdcl {
             }
         }
         while true{
-            match &propagate_queue.pop_front(){
-                None => self.decide(),   //a fila está vazia
-                &Some(current) => {
-                    let clauses_to_watch: &Vec<usize> ;
+            match propagate_queue.pop_front(){
+                None => (), //self.decide(&mut propagate_queue),   //a fila está vazia
+                Some(current) => {
+                    let clauses_to_watch: &Vec<usize> = &self.occur_lists.get(current);
                     let ind: usize;
                     if current > 0 {
                         ind = (current-1) as usize;
-                        clauses_to_watch = &self.occur_lists.negative[ind];
                     } else if current<0 {
                         ind = -(current+1) as usize;
-                        clauses_to_watch = &self.occur_lists.positive[ind];
                     } else {
                         panic!("0 não é um literal");
                     };
-                    for c_ind in clauses_to_watch.iter(){
-                        self.clauses_list[c_ind].watch(current);
+                    let mut lit_saw_in_clause = vec![];
+                    for &c_ind in clauses_to_watch.iter(){
+                        match self.clauses_list[c_ind].watch(current){
+                            Watcher::New(new_watched) => lit_saw_in_clause.push((new_watched,c_ind)),
+                            Watcher::Unit(to_prop) => propagate_queue.push_back(to_prop)
+                        }
                     }
+                    
                 }
             };
         }
@@ -309,13 +349,13 @@ impl Cdcl {
         println!("TODO: remove_lemmas_if_applicable");
     }
 
-    fn decide(&self) -> bool {
-        println!("TODO: decide");
+    fn decide(&self, propagate_queue: &mut VecDeque<i64>) -> bool {
+        println!("get some random lit and add it to the queue");
         false
     }
-
-    
 }
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
