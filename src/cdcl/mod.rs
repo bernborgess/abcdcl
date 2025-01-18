@@ -26,7 +26,7 @@ enum Seen {
 
 #[derive(Debug)]
 struct InnerAssignment{
-    atom: usize,
+    atom: usize, //atom number, 1..
     asgnm: bool,
     decision_level: usize,
     decision: bool,
@@ -36,19 +36,38 @@ struct InnerAssignment{
 #[derive(Debug)]
 struct Clause{
     data: Vec<i64>,
-    p1: usize,
-    p2: usize,
+    watch_ptr: [usize; 2],
 }
 
 impl Clause{
     pub fn new(arr: Vec<Vec<i64>>) -> Vec<Clause>{
         arr.into_iter()
-            .map(|v| Clause {data: v, p1: 0, p2: 1 })
+            .map(|v| Clause {data: v, watch_ptr: [0, 1] })
             .collect()
     }
 
     fn watch(&mut self, lit: i64) -> bool{
-        
+        if self.pointer(0) == lit{
+            self.next(0)
+        } else if self.pointer(1) == lit {
+            self.next(1)
+        } else { 
+            panic!("There's only 2 pointers")
+        }
+    }
+
+    fn pointer(&self, i: usize) -> i64{
+        self.data[self.watch_ptr[i]]
+    }
+
+    fn next(&mut self, i: usize) -> bool{                                // retorna true quando um ponteiro ultrapassa o array,
+        let max_pointer = if self.watch_ptr[0]<self.watch_ptr[1] {// e portanto a cláusula se torna unidade e seu último literal pode ser propagado
+            self.watch_ptr[1]
+        } else {
+            self.watch_ptr[0]
+        };
+        self.watch_ptr[i] = max_pointer+1;
+        self.watch_ptr[i]==self.data.len()
     }
 }
 
@@ -200,7 +219,7 @@ impl Cdcl {
                             Seen::SeenBoth => Seen::SeenBoth,
                         };
                     } else if *lit > 0 {
-                        let index = (lit - 1) as usize;
+                        let index = (lit-1) as usize;
                         // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
                         if i<2 {occur_lists.positive[index].push(clause_ind);}
                         seen_status[index] = match seen_status[index] {
@@ -245,14 +264,14 @@ impl Cdcl {
         let mut propagate_queue: VecDeque<i64> = VecDeque::new();
         for p in &self.partial_model{
             if p.asgnm{
-                propagate_queue.push_back((p.atom as i64));
+                propagate_queue.push_back(p.atom as i64);
             } else {
                 propagate_queue.push_back(-(p.atom as i64));
             }
         }
         while true{
             match &propagate_queue.pop_front(){
-                None => self.decide(), //a fila está vazia
+                None => self.decide(),   //a fila está vazia
                 &Some(current) => {
                     let clauses_to_watch: &Vec<usize> ;
                     let ind: usize;
@@ -260,13 +279,13 @@ impl Cdcl {
                         ind = (current-1) as usize;
                         clauses_to_watch = &self.occur_lists.negative[ind];
                     } else if current<0 {
-                        ind = (-current+1) as usize;
+                        ind = -(current+1) as usize;
                         clauses_to_watch = &self.occur_lists.positive[ind];
                     } else {
                         panic!("0 não é um literal");
                     };
                     for c_ind in clauses_to_watch.iter(){
-                        self.clauses_list[c_index].watch(lit);
+                        self.clauses_list[c_ind].watch(current);
                     }
                 }
             };
