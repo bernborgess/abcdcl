@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use rand::seq::IteratorRandom;
+use rand::Rng;
 use Watcher::*;
 use CdclResult::*;
 
@@ -276,6 +278,7 @@ impl Cdcl {
 
     fn update_model(&mut self, lit: i64){
         let atom = lit.abs() as usize;
+        self.unassigned.remove(&atom);
         self.model[atom - 1] = if lit<0{
             Some(false)
         }else if lit>0{
@@ -369,10 +372,10 @@ impl Cdcl {
             //match propagate_queue.pop_front(){
             match propagate_queue.pop_back(){
                 None => {
-                    match self.decide(){
+                    /*match self.decide(){
                         Some(thing) => propagate_queue.push_back((thing,true)),
                         None => break
-                    }
+                    }*/
                 },   //a fila está vazia
                 Some((current, decision)) => {
                     self.extend_partial_model(current, decision);
@@ -432,8 +435,19 @@ impl Cdcl {
         println!("TODO: remove_lemmas_if_applicable");
     }
 
-    fn decide(&mut self) -> Option<(i64)> {
-        self.debug_decide.pop()
+    fn decide(&self) -> Option<(i64)>{
+        let mut rng = rand::thread_rng();
+        let at: Option<&usize> = self.unassigned.iter().choose(&mut rng);
+        let polarity: bool = rng.gen();
+        if let Some(&atom) = at{
+            if polarity{
+                Some(atom as i64)
+            } else {
+                Some(-(atom as i64))
+            }
+        } else {
+            None
+        }
     }
 
     pub fn print_occur(&self){
