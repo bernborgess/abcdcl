@@ -5,17 +5,33 @@ use rand::Rng;
 use Watcher::*;
 use CdclResult::*;
 
-#[derive(Debug)]
-struct OccurLists{
-    positive: Vec<Vec<usize>>,// positive[k] contém os índices das cláusulas que têm o literal (k+1)
-    negative: Vec<Vec<usize>>,// negative[k] contém os índices das cláusulas que têm o literal -(k+1)
-}                             // indexação em base 0 😞😞😞
+
+fn conflict_model(lit: i64, model: &Vec<Option<bool>>) -> bool{
+    let ind: usize = (lit.abs()-1) as usize;
+    let sgn = if lit<0 {
+        false
+    } else if lit>0 {
+        true
+    } else {
+        panic!("0 não é um literal")
+    };
+    match model[ind]{
+        None => false,
+        Some(asgnm) => asgnm!=sgn,
+    }
+}
 
 enum Watcher{
     Unit(i64),
     NowWatched(i64),
     Conflict,
 }
+
+#[derive(Debug)]
+struct OccurLists{
+    positive: Vec<Vec<usize>>,// positive[k] contém os índices das cláusulas que têm o literal (k+1)
+    negative: Vec<Vec<usize>>,// negative[k] contém os índices das cláusulas que têm o literal -(k+1)
+}                             // indexação em base 0 😞😞😞
 
 impl OccurLists{
     fn new(n: usize) -> OccurLists{
@@ -87,7 +103,7 @@ impl Clause{
             .collect()
     }
 
-    fn watch(&mut self, lit: i64, model: &Vec<Option<bool>>) -> Watcher{
+    fn watch(&mut self, lit: i64, model: &Vec<Option<bool>>, demo: bool) -> Watcher{//remove demo
         if self.data.len()==1{
             return Unit(lit)
         }
@@ -98,9 +114,13 @@ impl Clause{
         } else { 
             panic!("There's only 2 pointers")
         };
-        let mut status: Watcher = self.next(ind);
+        if demo && lit==-3{
+            println!("Watching {:?}",lit);
+            println!("p1: {:?}, p2: {:?}",self.point(0), self.point(1));
+        }
+        let mut status: Watcher = self.next(ind, demo, lit);
         while self.boring(&status, model){
-            status = self.next(ind)
+            status = self.next(ind, demo, lit)
         }
         status
     }
@@ -110,17 +130,20 @@ impl Clause{
             Unit(_) => false,
             Conflict => false,
             &NowWatched(lit) => {
-                let index = if lit < 0{
-                    (-lit-1) as usize
+                let index: usize;
+                let polarity: bool;
+                if lit < 0{
+                    index = (-lit-1) as usize;
+                    polarity = false;
                 } else if lit>0 {
-                    (lit-1) as usize
+                    index = (lit-1) as usize;
+                    polarity = true;
                 } else {
-                    panic!("0 is not a literal")
-                };
-                //println!("lit: {lit}, index: {index}");
-                match &model[index]{
+                    panic!("0 is not a literal");
+                }
+                match model[index]{
                     None => false,
-                    Some(_) => true,
+                    Some(asgmnt) => asgmnt!=polarity,
                 }
             }
         }
@@ -130,8 +153,15 @@ impl Clause{
         self.data[self.watch_ptr[i]]
     }
 
-    fn next(&mut self, i: usize) -> Watcher{
+    fn next(&mut self, i: usize, demo: bool, lit:i64) -> Watcher{//remove demo, lit
+        if demo && lit==-3{
+            println!("Moving p{:?}",i+1);
+            println!("First it was {:?}",self.point(i));
+        }
         if self.watch_ptr[(i+1)%2]>=self.data.len(){
+            if demo && lit==-3{
+                println!("p{:?} was the only valid pointer, return conflict",i+1);
+            }
             return Conflict
         }
         let max_pointer = if self.watch_ptr[0]<self.watch_ptr[1] {
@@ -142,8 +172,14 @@ impl Clause{
         
         self.watch_ptr[i] = max_pointer+1;
         if self.watch_ptr[i]==self.data.len(){// o ponteiro ultrapassa o array, retorna o literal que sobrou para ser propagado
+            if demo && lit==-3{
+                println!("Now p{:?} overflowed, return p{:?} as unit",i+1,(i+1)%2+1);
+            }
             Unit(self.point((i+1)%2))
         } else {
+            if demo && lit==-3{
+                println!("Now p{:?} is {:?}",i+1,self.point(i));
+            }
             NowWatched(self.point(i))      // retorna o novo literal vigiado
         }
     }
@@ -174,25 +210,27 @@ fn remove_duplicates<T: Ord>(v: &mut Vec<T>){
 pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     println!("TODO: cdcl run {:?}", cnf);
     let mut solver = Cdcl::new(cnf, lits);
-    solver.pre_process(); //aplica a regra PURE e outros truques de pré-processamento
-    //solver.propagate_trusted_assignment();
+    let mut trivial = Some(solver.pre_process()); //aplica a regra PURE e outros truques de pré-processamento
     while true {
-    //  while (propagate_gives_conflict()){
-    //         if (decision_level==0) return UNSAT;
-    //         else analyze_conflict();
-    //   }
-    //     restart_if_applicable();
-    //     remove_lemmas_if_applicable();
-    //     if (!decide()) returns SAT(self.format()); // All vars assigned
+      while (solver.propagate_gives_conflict(&mut trivial, false)){
+            if solver.decision_level==0 {
+                return UNSAT;
+            } else {
+                solver.analyze_conflict();
+            }
+       }
+        //restart_if_applicable();
+        //remove_lemmas_if_applicable();
+    //    if (!decide()) returns SAT(self.format()); // All vars assigned
     }
     CdclResult::UNSAT
 }
 
 pub fn run_demo(){
-    let mut solver = Cdcl::new(vec![vec![1,-2,-6],vec![2,-3,5,-1,-6],vec![6,2,4],vec![1,2],vec![-6,-1,3],vec![-5,4,-2]],6);
+    let mut solver = Cdcl::new(vec![vec![1,-2,-6],vec![2,-3,5,-1,-6],vec![6,2,4],vec![1,2],vec![-6,-1,3],vec![-5,4,2]],6);
     solver.pre_process();
     solver.print_occur();
-    solver.propagate(None);
+    solver.propagate_gives_conflict(&mut None, true);
 }
 
 
@@ -202,7 +240,7 @@ pub struct Cdcl { //remove pub
     clauses_list: Vec<Clause>, // array de cláusulas
     unassigned: HashSet<usize>, // conjunto de todos os átomos sem valor atribuído
     number_of_atoms: usize, // total de átomos
-    decision_level: usize, // maior nível de decisão do estado
+    pub decision_level: usize, // maior nível de decisão do estado
     conflicting: Option<Clause>, // cláusula conflitante
     occur_lists: OccurLists, // lista de ocorrências
     model: Vec<Option<bool>>, //elemento k-1 é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
@@ -356,69 +394,98 @@ impl Cdcl {
         propagation_queue
     }
 
-    fn propagate_gives_conflict(&mut self) -> bool {
-        self.propagate(None);
-        match self.conflicting{ None=> true, _ => false}
-    }
-
-    pub fn propagate(&mut self, prop_queue: Option<VecDeque<i64>>)->CdclResult{ //remove pub
-        let mut i = 1;
-        let mut update_model: Vec<i64> = vec![];
-        let mut propagate_queue: VecDeque<(i64,bool)> = match prop_queue{
-            Some(q) => q.into_iter().map(|x| (x,false)).collect(),
-            None => VecDeque::new()
+    pub fn propagate_gives_conflict(&mut self, trivial_lits: &mut Option<VecDeque<i64>>, demo: bool)->bool{ //remove pub
+        let mut i = 1; //for demo
+        //let mut update_model: Vec<i64> = vec![];
+        let mut propagate_arr: VecDeque<(i64,bool)> = VecDeque::new();
+        match trivial_lits{
+            Some(q) => {
+                while let Some(lit) = q.pop_front() {
+                    propagate_arr.push_back((lit, false));
+                    self.extend_partial_model(lit, false);
+                }
+            }
+            None => ()
         };
         loop{
-            //match propagate_queue.pop_front(){
-            match propagate_queue.pop_back(){
+            /*let next = if demo{
+                propagate_queue.pop_back()
+            } else {
+                propagate_queue.pop_front()
+            };*/
+            let next =  propagate_arr.pop_back();
+            match next {
                 None => {
-                    match self.decide(){
+                    let decided = if demo{
+                        self.debug_decide.pop()
+                    } else {
+                        self.decide()
+                    };
+                    match decided{
                         Some(to_prop) => {
-                            propagate_queue.push_back((to_prop,true));
-                            update_model.push(to_prop);
+                            propagate_arr.push_back((to_prop,true));
+                            //update_model.push(to_prop);
+                            self.extend_partial_model(to_prop, true);
                         }
-                        None => break
+                        None => return false,
                     }
                 },   //a fila está vazia
                 Some((current, decision)) => {
-                    self.extend_partial_model(current, decision);
+                    //self.extend_partial_model(current, decision);
+                    let mut update_model: Vec<i64> = vec![];
                     let clauses_to_watch: &Vec<usize> = &self.occur_lists.get(-current);
+                    if demo && current==3{ //remove now
+                        println!("clauses to watch on {:?} prop: {:?}",current,&clauses_to_watch);
+                    }
                     let mut lit_saw = vec![];
                     let mut in_clause = vec![];
                     for &c_ind in clauses_to_watch.iter(){
-                        match self.clauses_list[c_ind].watch(-current,&self.model){
+                        if demo && current==3{ //remove now
+                            println!("clause {:?}:  {:?}",c_ind,&self.clauses_list[c_ind]);
+                            println!("self.clauses_list[{:?}].watch({:?}, &self.model)",c_ind,-current);
+                        }
+                        match self.clauses_list[c_ind].watch(-current,&self.model, demo){
                             NowWatched(new_watched) => {
                                 lit_saw.push(new_watched);
                                 in_clause.push(c_ind);
                             }
                             Unit(to_prop) => {
-                                propagate_queue.push_back((to_prop,false));
+                                if conflict_model(to_prop,&self.model){
+                                    self.conflicting = Some(self.clauses_list[c_ind].clone());
+                                    if demo && current==3{ //remove now
+                                        println!("Conflict found on clause {:?}",&self.clauses_list[c_ind]);
+                                        println!("Model to backjump:");
+                                        self.print_model();
+                                    }
+                                    return true;
+                                }
+                                propagate_arr.push_back((to_prop,false));
                                 update_model.push(to_prop);
                             }
                             Conflict => {
                                 self.conflicting = Some(self.clauses_list[c_ind].clone());
-                                println!("Explain");
-                                return UNSAT; //remove
-                                //self.explain();
+                                return true;
                             }
                         }
                     }
                     for &new_info in update_model.iter(){
-                        self.update_model(new_info);
+                        //self.update_model(new_info);
+                        self.extend_partial_model(new_info, false);
                     }
                     for i in 0..lit_saw.len() {
                         self.occur_lists.add_lit_to_clause(lit_saw[i], in_clause[i]);
                     }
                     self.occur_lists.remove_clauses_from_lit(&in_clause,-current);
-                    println!("\n iteration {i}");
-                    self.print_model();
-                    self.print_occur();
-                    self.print_prop(&propagate_queue);
-                    i+=1;
+                    if demo{
+                        println!("\n iteration {i}");
+                        self.print_model();
+                        self.print_occur();
+                        self.print_prop(&propagate_arr);
+                        i+=1;
+                    }
                 }
             };
         }
-        UNSAT
     }
 
     /*fn format(&self) -> Vec<Assignment> {
