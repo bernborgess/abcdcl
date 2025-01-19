@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use Watcher::*;
+use CdclResult::*;
 
 #[derive(Debug)]
 struct OccurLists{
@@ -9,7 +11,8 @@ struct OccurLists{
 
 enum Watcher{
     Unit(i64),
-    New(i64)
+    NowWatched(i64),
+    Conflict,
 }
 
 impl OccurLists{
@@ -21,31 +24,38 @@ impl OccurLists{
     }
 
     fn get(&self, n: i64) -> &Vec<usize>{
-        let ind = (n as usize)-1;
         if n<0{
+            let ind = -(n+1) as usize;
             &self.negative[ind]
         } else {
+            let ind = (n-1) as usize;
             &self.positive[ind]
         }
     }
 
     fn get_mut(&mut self, n: i64) -> &mut Vec<usize>{
-        let ind = (n as usize)-1;
         if n<0{
+            let ind = -(n+1) as usize;
             &mut self.negative[ind]
         } else {
+            let ind = (n-1) as usize;
             &mut self.positive[ind]
         }
     }
 
-    fn lit_saw_in_clause(&mut self, lit: i64, clause: usize){
+    fn add_lit_to_clause(&mut self, lit: i64, clause: usize){
         self.get_mut(lit).push(clause);
+    }
+
+    fn remove_clauses_from_lit(&mut self, clauses: &Vec<usize>, lit: i64){
+        let mut lit_list: &mut Vec<usize> = self.get_mut(lit);
+        *lit_list = lit_list
+            .drain(..)
+            .filter(|x| !clauses.contains(x))
+            .collect();
     }
 }
 
-struct WatcherUptate{
-    to_Watch: Option<usize>,
-}
 
 #[derive(Clone, Debug)]
 enum Seen {
@@ -57,14 +67,12 @@ enum Seen {
 
 #[derive(Debug)]
 struct InnerAssignment{
-    atom: usize, //atom number, 1..
-    asgnm: bool,
+    lit: i64, //atom number with polarity, -1,1,-2,2..
     decision_level: usize,
-    decision: bool,
-    propagated: bool,
+    decision: bool, //true if assignment comes from a decide
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Clause{
     data: Vec<i64>,
     watch_ptr: [usize; 2],
@@ -77,13 +85,42 @@ impl Clause{
             .collect()
     }
 
-    fn watch(&mut self, lit: i64) -> Watcher{
-        if self.point(0) == lit{
-            self.next(0)
+    fn watch(&mut self, lit: i64, model: &Vec<Option<bool>>) -> Watcher{
+        if self.data.len()==1{
+            return Unit(lit)
+        }
+        let ind: usize = if self.point(0) == lit{
+            0
         } else if self.point(1) == lit {
-            self.next(1)
+            1
         } else { 
             panic!("There's only 2 pointers")
+        };
+        let mut status: Watcher = self.next(ind);
+        while self.boring(&status, model){
+            status = self.next(ind)
+        }
+        status
+    }
+
+    fn boring(&self, status: &Watcher, model: &Vec<Option<bool>>) -> bool{
+        match status{
+            Unit(_) => false,
+            Conflict => false,
+            &NowWatched(lit) => {
+                let index = if lit < 0{
+                    (-lit-1) as usize
+                } else if lit>0 {
+                    (lit-1) as usize
+                } else {
+                    panic!("0 is not a literal")
+                };
+                //println!("lit: {lit}, index: {index}");
+                match &model[index]{
+                    None => false,
+                    Some(_) => true,
+                }
+            }
         }
     }
 
@@ -92,6 +129,9 @@ impl Clause{
     }
 
     fn next(&mut self, i: usize) -> Watcher{
+        if self.watch_ptr[(i+1)%2]>=self.data.len(){
+            return Conflict
+        }
         let max_pointer = if self.watch_ptr[0]<self.watch_ptr[1] {
             self.watch_ptr[1]
         } else {
@@ -99,10 +139,10 @@ impl Clause{
         };
         
         self.watch_ptr[i] = max_pointer+1;
-        if self.watch_ptr[i]==self.data.len(){// o ponteiro ultrapassa o array, retorna None
-            Watcher::Unit(self.point((i+1)%2))
+        if self.watch_ptr[i]==self.data.len(){// o ponteiro ultrapassa o array, retorna o literal que sobrou para ser propagado
+            Unit(self.point((i+1)%2))
         } else {
-            Watcher::New(self.point(i))               // retorna o novo literal vigiado
+            NowWatched(self.point(i))      // retorna o novo literal vigiado
         }
     }
 }
@@ -135,10 +175,10 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     solver.pre_process(); //aplica a regra PURE e outros truques de pré-processamento
     //solver.propagate_trusted_assignment();
     while true {
-        while (propagate_gives_conflict()){
+    //  while (propagate_gives_conflict()){
     //         if (decision_level==0) return UNSAT;
     //         else analyze_conflict();
-         }
+    //   }
     //     restart_if_applicable();
     //     remove_lemmas_if_applicable();
     //     if (!decide()) returns SAT(self.format()); // All vars assigned
@@ -146,21 +186,29 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     CdclResult::UNSAT
 }
 
+pub fn run_demo(){
+    let mut solver = Cdcl::new(vec![vec![1,-2,-6],vec![2,-3,5,-1,-6],vec![6,2,4],vec![1,2],vec![-6,-1,3],vec![-5,4,-2]],6);
+    solver.pre_process();
+    solver.print_occur();
+    solver.propagate(None);
+}
 
-struct Cdcl {
+
+pub struct Cdcl { //remove pub
     partial_model: Vec<InnerAssignment>, // Vetor usado pelas regras,
-    decision_points: Vec<usize>, // Se o valor k está nesse vetor, quer dizer que partial_model[k+1] está em um decision level acima de partial_model[k]
+    decision_points: Vec<usize>, // Se o valor k está nesse vetor, quer dizer que partial_model[k] está em um decision level acima de partial_model[k-1]
     clauses_list: Vec<Clause>, // array de cláusulas
     unassigned: HashSet<usize>, // conjunto de todos os átomos sem valor atribuído
     number_of_atoms: usize, // total de átomos
     decision_level: usize, // maior nível de decisão do estado
-    confliting: Option<Vec<i64>>, // cláusula conflitante
+    conflicting: Option<Clause>, // cláusula conflitante
     occur_lists: OccurLists, // lista de ocorrências
     model: Vec<Option<bool>>, //elemento k-1 é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
+    debug_decide: Vec<i64>,
 }
 
 impl Cdcl {
-    fn new(cnf: Vec<Vec<i64>>, atoms: usize) -> Cdcl {
+    pub fn new(cnf: Vec<Vec<i64>>, atoms: usize) -> Cdcl {
         Cdcl {
             partial_model: vec![],
             decision_points: vec![],
@@ -168,9 +216,10 @@ impl Cdcl {
             unassigned: (1..=atoms).collect(),
             number_of_atoms: atoms,
             decision_level: 0,
-            confliting: None,
+            conflicting: None,
             occur_lists: OccurLists::new(0),
             model: vec![None;atoms],
+            debug_decide: vec![-4,-2],
         }
     }
 
@@ -202,36 +251,52 @@ impl Cdcl {
         }
     }
 
-    fn extend_partial_model(&mut self, atom: usize, asgnm: bool, decision: bool){
+    fn extend_partial_model(&mut self, lit: i64, decision: bool){
         if decision {
             self.decision_level+=1;
-            self.decision_points.push(self.partial_model.len()-1);
+            self.decision_points.push(self.partial_model.len());
         }
         let decision_level = self.decision_level;
         let inner = InnerAssignment {
-            atom,
-            asgnm,
+            lit,
             decision_level,
             decision,
-            propagated: false,
         };
-        
+        let atom = lit.abs() as usize;
         self.unassigned.remove(&atom);
         self.partial_model.push(inner);
-        self.model[atom-1] = Some(asgnm);
+        self.model[atom - 1] = if lit<0{
+            Some(false)
+        }else if lit>0{
+            Some(true)
+        }else{
+            None
+        };
+    }
+
+    fn update_model(&mut self, lit: i64){
+        let atom = lit.abs() as usize;
+        self.model[atom - 1] = if lit<0{
+            Some(false)
+        }else if lit>0{
+            Some(true)
+        }else{
+            None
+        };
     }
 
     // Remove duplicatas, realiza atribuições triviais (PURE e cláusulas unitárias) e constrói a occur_list
-    fn pre_process(&mut self) -> () {
+    pub fn pre_process(&mut self) -> VecDeque<i64>{// remove pub
+        let mut propagation_queue: VecDeque<i64> = VecDeque::new();
         let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.number_of_atoms];
-        let mut unary_clause_assignments: HashSet<i64> = HashSet::new();
+        let mut unary_clause_assignments: Vec<i64> = vec![]; // vector pois suponho que não existem 2 cláusulas unitárias iguais na entrada
         let mut occur_lists = OccurLists::new(self.number_of_atoms);
         for (clause_ind, clause) in self.clauses_list.iter_mut().enumerate(){
-            remove_duplicates(&mut clause.data); // remove cláusulas repetidas
+            //remove_duplicates(&mut clause.data); // remove cláusulas repetidas
             //let mut clause_is_tautology = false;
             //let mut seen_in_clause: HashSet<i64> = HashSet::new();
             if clause.data.len()==1{ // se essa cláusula só tem um literal, então só atribuições que tornam esse literal verdadeiro podem ser modelos
-                unary_clause_assignments.insert(clause.data[0]);
+                unary_clause_assignments.push(clause.data[0]);
             }
             /*for lit in clause.iter(){ // procura cláusulas triviais
                 if seen_in_clause.contains(&(-lit)){
@@ -273,63 +338,81 @@ impl Cdcl {
         }
         for (index, status) in seen_status.iter().enumerate() {
             match status { //Aplica PURE
-                Seen::Unseen => (),
-                Seen::SeenPositive => self.extend_partial_model(index+1, true, false),
-                Seen::SeenNegative => self.extend_partial_model(index+1, false, false),  
+                Seen::Unseen => propagation_queue.push_back((index+1) as i64), // se o átomo não aparece na fórmula posso atribuir o valor que eu quiser
+                Seen::SeenPositive => propagation_queue.push_back((index+1) as i64),
+                Seen::SeenNegative => propagation_queue.push_back(-((index+1) as i64)),  
                 Seen::SeenBoth => (),
             }
         }
         for unary in unary_clause_assignments.into_iter(){
-            let asgnm: bool =   if unary < 0{
-                                        false
-                                } else if unary > 0 {
-                                    true
-                                } else {
-                                    panic!("0 in clause!!!!\nThis is not a valid CNF")
-                                };
-            self.extend_partial_model(unary.abs() as usize, asgnm,  false);
+            if let Seen::SeenBoth = seen_status[(unary.abs() as usize)-1]{
+                propagation_queue.push_back(unary);
+            }
         }
         self.occur_lists = occur_lists;
+        propagation_queue
     }
 
     fn propagate_gives_conflict(&mut self) -> bool {
-        self.propagate();
-        return self.confliting != None
+        self.propagate(None);
+        match self.conflicting{ None=> true, _ => false}
     }
 
-    fn propagate(&mut self){
-        let mut propagate_queue: VecDeque<i64> = VecDeque::new();
-        for p in &self.partial_model{
-            if p.asgnm{
-                propagate_queue.push_back(p.atom as i64);
-            } else {
-                propagate_queue.push_back(-(p.atom as i64));
-            }
-        }
-        while true{
-            match propagate_queue.pop_front(){
-                None => (), //self.decide(&mut propagate_queue),   //a fila está vazia
-                Some(current) => {
-                    let clauses_to_watch: &Vec<usize> = &self.occur_lists.get(current);
-                    let ind: usize;
-                    if current > 0 {
-                        ind = (current-1) as usize;
-                    } else if current<0 {
-                        ind = -(current+1) as usize;
-                    } else {
-                        panic!("0 não é um literal");
-                    };
-                    let mut lit_saw_in_clause = vec![];
+    pub fn propagate(&mut self, prop_queue: Option<VecDeque<i64>>)->CdclResult{ //remove pub
+        let mut i = 1;
+        let mut update_model: Vec<i64> = vec![];
+        let mut propagate_queue: VecDeque<(i64,bool)> = match prop_queue{
+            Some(q) => q.into_iter().map(|x| (x,false)).collect(),
+            None => VecDeque::new()
+        };
+        loop{
+            //match propagate_queue.pop_front(){
+            match propagate_queue.pop_back(){
+                None => {
+                    match self.decide(){
+                        Some(thing) => propagate_queue.push_back((thing,true)),
+                        None => break
+                    }
+                },   //a fila está vazia
+                Some((current, decision)) => {
+                    self.extend_partial_model(current, decision);
+                    let clauses_to_watch: &Vec<usize> = &self.occur_lists.get(-current);
+                    let mut lit_saw = vec![];
+                    let mut in_clause = vec![];
                     for &c_ind in clauses_to_watch.iter(){
-                        match self.clauses_list[c_ind].watch(current){
-                            Watcher::New(new_watched) => lit_saw_in_clause.push((new_watched,c_ind)),
-                            Watcher::Unit(to_prop) => propagate_queue.push_back(to_prop)
+                        match self.clauses_list[c_ind].watch(-current,&self.model){
+                            NowWatched(new_watched) => {
+                                lit_saw.push(new_watched);
+                                in_clause.push(c_ind);
+                            }
+                            Unit(to_prop) => {
+                                propagate_queue.push_back((to_prop,false));
+                                update_model.push(to_prop);
+                            }
+                            Conflict => {
+                                self.conflicting = Some(self.clauses_list[c_ind].clone());
+                                println!("Explain");
+                                return UNSAT; //remove
+                                //self.explain();
+                            }
                         }
                     }
-                    
+                    for &new_info in update_model.iter(){
+                        self.update_model(new_info);
+                    }
+                    for i in 0..lit_saw.len() {
+                        self.occur_lists.add_lit_to_clause(lit_saw[i], in_clause[i]);
+                    }
+                    self.occur_lists.remove_clauses_from_lit(&in_clause,-current);
+                    println!("\n iteration {i}");
+                    self.print_model();
+                    self.print_occur();
+                    self.print_prop(&propagate_queue);
+                    i+=1;
                 }
             };
         }
+        UNSAT
     }
 
     /*fn format(&self) -> Vec<Assignment> {
@@ -349,9 +432,38 @@ impl Cdcl {
         println!("TODO: remove_lemmas_if_applicable");
     }
 
-    fn decide(&self, propagate_queue: &mut VecDeque<i64>) -> bool {
-        println!("get some random lit and add it to the queue");
-        false
+    fn decide(&mut self) -> Option<(i64)> {
+        self.debug_decide.pop()
+    }
+
+    pub fn print_occur(&self){
+        for (i, pos) in self.occur_lists.positive.iter().enumerate(){
+            let v: Vec<usize> = pos.iter().map(|x| x+1).collect();
+            println!("p{:?}: {:?}",i+1,v);
+        }
+        for (i, neg) in self.occur_lists.negative.iter().enumerate(){
+            let v: Vec<usize> = neg.iter().map(|x| x+1).collect();
+            println!("¬p{:?}: {:?}",i+1,v);
+        }
+    }
+
+    pub fn print_model(&self){
+        let mut s = "".to_string();
+        for m in self.partial_model.iter(){
+            if m.decision{
+                s += &"• ".to_string();
+            }
+            if m.lit<0{
+                s += &"¬".to_string();
+            }
+            s += &format!("p{:?} ",m.lit.abs());
+        }
+        println!("{:?}",s);
+    }
+
+    pub fn print_prop(&self, prop: &VecDeque<(i64,bool)>){
+        let v: Vec<_> = prop.iter().map(|(x,b)| x).collect();
+        println!("to propagate: {:?}", v)
     }
 }
 
@@ -401,4 +513,6 @@ mod tests {
             SAT(_) => panic!("Expected UNSAT"),
         }
     }
+
+    
 }
