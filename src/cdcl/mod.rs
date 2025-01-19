@@ -103,7 +103,7 @@ impl Clause{
             .collect()
     }
 
-    fn watch(&mut self, lit: i64, model: &Vec<Option<bool>>, demo: bool) -> Watcher{//remove demo
+    fn watch(&mut self, lit: i64, model: &Vec<Option<bool>>) -> Watcher{//remove demo
         if self.data.len()==1{
             return Unit(lit)
         }
@@ -114,13 +114,9 @@ impl Clause{
         } else { 
             panic!("There's only 2 pointers")
         };
-        if demo && lit==-3{
-            println!("Watching {:?}",lit);
-            println!("p1: {:?}, p2: {:?}",self.point(0), self.point(1));
-        }
-        let mut status: Watcher = self.next(ind, demo, lit);
+        let mut status: Watcher = self.next(ind);
         while self.boring(&status, model){
-            status = self.next(ind, demo, lit)
+            status = self.next(ind)
         }
         status
     }
@@ -153,15 +149,8 @@ impl Clause{
         self.data[self.watch_ptr[i]]
     }
 
-    fn next(&mut self, i: usize, demo: bool, lit:i64) -> Watcher{//remove demo, lit
-        if demo && lit==-3{
-            println!("Moving p{:?}",i+1);
-            println!("First it was {:?}",self.point(i));
-        }
+    fn next(&mut self, i: usize) -> Watcher{
         if self.watch_ptr[(i+1)%2]>=self.data.len(){
-            if demo && lit==-3{
-                println!("p{:?} was the only valid pointer, return conflict",i+1);
-            }
             return Conflict
         }
         let max_pointer = if self.watch_ptr[0]<self.watch_ptr[1] {
@@ -172,14 +161,8 @@ impl Clause{
         
         self.watch_ptr[i] = max_pointer+1;
         if self.watch_ptr[i]==self.data.len(){// o ponteiro ultrapassa o array, retorna o literal que sobrou para ser propagado
-            if demo && lit==-3{
-                println!("Now p{:?} overflowed, return p{:?} as unit",i+1,(i+1)%2+1);
-            }
             Unit(self.point((i+1)%2))
         } else {
-            if demo && lit==-3{
-                println!("Now p{:?} is {:?}",i+1,self.point(i));
-            }
             NowWatched(self.point(i))      // retorna o novo literal vigiado
         }
     }
@@ -430,21 +413,14 @@ impl Cdcl {
                         None => return false,
                     }
                 },   //a fila está vazia
-                Some((current, decision)) => {
+                Some((current, _)) => {
                     //self.extend_partial_model(current, decision);
                     let mut update_model: Vec<i64> = vec![];
                     let clauses_to_watch: &Vec<usize> = &self.occur_lists.get(-current);
-                    if demo && current==3{ //remove now
-                        println!("clauses to watch on {:?} prop: {:?}",current,&clauses_to_watch);
-                    }
                     let mut lit_saw = vec![];
                     let mut in_clause = vec![];
                     for &c_ind in clauses_to_watch.iter(){
-                        if demo && current==3{ //remove now
-                            println!("clause {:?}:  {:?}",c_ind,&self.clauses_list[c_ind]);
-                            println!("self.clauses_list[{:?}].watch({:?}, &self.model)",c_ind,-current);
-                        }
-                        match self.clauses_list[c_ind].watch(-current,&self.model, demo){
+                        match self.clauses_list[c_ind].watch(-current,&self.model){
                             NowWatched(new_watched) => {
                                 lit_saw.push(new_watched);
                                 in_clause.push(c_ind);
@@ -452,11 +428,6 @@ impl Cdcl {
                             Unit(to_prop) => {
                                 if conflict_model(to_prop,&self.model){
                                     self.conflicting = Some(self.clauses_list[c_ind].clone());
-                                    if demo && current==3{ //remove now
-                                        println!("Conflict found on clause {:?}",&self.clauses_list[c_ind]);
-                                        println!("Model to backjump:");
-                                        self.print_model();
-                                    }
                                     return true;
                                 }
                                 propagate_arr.push_back((to_prop,false));
