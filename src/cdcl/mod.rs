@@ -372,10 +372,13 @@ impl Cdcl {
             //match propagate_queue.pop_front(){
             match propagate_queue.pop_back(){
                 None => {
-                    /*match self.decide(){
-                        Some(thing) => propagate_queue.push_back((thing,true)),
+                    match self.decide(){
+                        Some(to_prop) => {
+                            propagate_queue.push_back((to_prop,true));
+                            update_model.push(to_prop);
+                        }
                         None => break
-                    }*/
+                    }
                 },   //a fila está vazia
                 Some((current, decision)) => {
                     self.extend_partial_model(current, decision);
