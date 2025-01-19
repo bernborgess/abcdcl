@@ -1,8 +1,9 @@
-use abcdclt::{cdcl::run_cdcl, parser::read_cnf};
+use abcdclt::{cdcl::{run_cdcl, run_demo}, parser::read_cnf};
 
 fn main() {
-    let (cnf, lits) = read_cnf();
+    //let (cnf, lits) = read_cnf();
     // TODO: Pass the right number of literals!
-    let result = run_cdcl(cnf, lits);
-    println!("{:?}", result);
+    //let result = run_cdcl(cnf, lits);
+    //println!("{:?}", result);
+    run_demo()
 }
