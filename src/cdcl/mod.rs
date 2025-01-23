@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use rand::seq::IteratorRandom;
 use std::fmt;
-use indexmap::IndexSet;
 use std::mem;
 use rand::Rng;
 use Watcher::*;
@@ -12,10 +11,13 @@ use CdclResult::*;
 pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     println!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
-    let mut trivial: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
+    let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
+    if solver.clauses_list.len()==0{
+        return solver.SAT();
+    }
     solver.build_occur_lists();
-    while true {
-      while (solver.propagate_gives_conflict(&mut trivial, false)){
+    loop {
+      while solver.propagate_gives_conflict(&mut trivial_or_decided){
             if solver.decision_level==0 {
                 return UNSAT;
             } else {
@@ -24,7 +26,10 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
        }
         //restart_if_applicable();
         //remove_lemmas_if_applicable();
-    //    if (!decide()) returns SAT(self.format()); // All vars assigned
+        match solver.decide(){
+            None => return solver.SAT(),
+            Some(a) => trivial_or_decided = Some(VecDeque::from(vec![a])),
+        }
     }
     CdclResult::UNSAT
 }
@@ -190,8 +195,6 @@ impl Clause{
         } else { 
             panic!("There's only 2 pointers")
         };
-        //posição inicial do ponteiro para caso ele tenha que andar mais de uma vez
-        let start = self.point(ind);
 
         //move o ponteiro
         let mut status: Watcher = self.next(ind);
@@ -291,19 +294,9 @@ fn remove_duplicates<T: Ord>(v: &mut Vec<T>){
 }
 
 
-
-pub fn run_demo(){
-    let mut solver: Cdcl = Cdcl::new(6);
-    let cnf: Vec<Vec<i64>> = vec![vec![1,-2,-6],vec![2,-3,5,-1,-6],vec![6,2,4],vec![1,2],vec![-6,-1,3],vec![-5,4,2]];
-    solver.pre_process(cnf);
-    solver.print_occur();
-    solver.propagate_gives_conflict(&mut None, true);
-}
-
-
 pub struct Cdcl { //remove pub
-    partial_model: Vec<InnerAssignment>, // Vetor usado pelas regras,
-    decision_points: Vec<usize>, // Se o valor k está nesse vetor, quer dizer que partial_model[k] está em um decision level acima de partial_model[k-1]
+    //partial_model: Vec<InnerAssignment>, // Vetor usado pelas regras,
+    //decision_points: Vec<usize>, // Se o valor k está nesse vetor, quer dizer que partial_model[k] está em um decision level acima de partial_model[k-1]
     pub clauses_list: Vec<Clause>, // array de cláusulas
     unassigned: HashSet<usize>, // conjunto de todos os átomos sem valor atribuído
     number_of_atoms: usize, // total de átomos
@@ -311,14 +304,13 @@ pub struct Cdcl { //remove pub
     conflicting: Option<Clause>, // cláusula conflitante
     occur_lists: OccurLists,    //lista de ocorrências
     model: Vec<Option<bool>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
-    debug_decide: Vec<i64>,
 }
 
 impl Cdcl {
     pub fn new(atoms: usize) -> Cdcl {
         Cdcl {
-            partial_model: vec![],
-            decision_points: vec![],
+            //partial_model: vec![],
+            //decision_points: vec![],
             clauses_list: vec![],
             unassigned: (1..=atoms).collect(),
             number_of_atoms: atoms,
@@ -326,7 +318,6 @@ impl Cdcl {
             conflicting: None,
             occur_lists: OccurLists::new(0),
             model: vec![None;atoms+1], //aloco 1 espaço a mais para garantir indexação em base 1
-            debug_decide: vec![-4,-2],
         }
     }
 
@@ -476,17 +467,16 @@ impl Cdcl {
         true
     }
 
+    //TODO: Test
     pub fn propagate_gives_conflict(
         &mut self, 
-        trivial_lits_ref: &mut Option<VecDeque<i64>>, 
-        demo: bool)->bool{ 
-        let mut i = 1; //for demo
+        trivial_or_decided_ref: &mut Option<VecDeque<i64>>)->bool{
 
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model = mem::take(&mut self.model);
         let mut occur_lists = &mut self.occur_lists;
-        let mut trivial_lits: Option<VecDeque<i64>> = trivial_lits_ref.take();
-        let mut propagate_arr: VecDeque<i64> = match trivial_lits{
+        let mut trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
+        let mut propagate_arr: VecDeque<i64> = match trivial_or_decided{
             Some(q) => q,
             None => VecDeque::new(),
         };
@@ -515,6 +505,7 @@ impl Cdcl {
                                     occur_lists.give_to(clauses_to_watch,-current);
                                     return true;
                                 }
+                                self.unassigned.remove(&(to_prop.abs() as usize));
                                 propagate_arr.push_back(to_prop);
                                 model_insert(&mut model, to_prop);
                             }
@@ -574,7 +565,7 @@ impl Cdcl {
         }
     }
 
-    pub fn print_model(&self){
+    /*pub fn print_model(&self){
         let mut s = "".to_string();
         for m in self.partial_model.iter(){
             if m.decision{
@@ -586,7 +577,7 @@ impl Cdcl {
             s += &format!("p{:?} ",m.lit.abs());
         }
         println!("{:?}",s);
-    }
+    }*/
 
     pub fn print_prop(&self, prop: &VecDeque<i64>){
         let v: Vec<_> = prop.iter().map(|x| x).collect();
