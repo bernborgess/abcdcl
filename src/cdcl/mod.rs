@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use rand::seq::IteratorRandom;
+use indexmap::IndexSet;
 use rand::Rng;
 use Watcher::*;
 use CdclResult::*;
@@ -21,6 +22,7 @@ fn conflict_model(lit: i64, model: &Vec<Option<bool>>) -> bool{
     }
 }
 
+
 enum Watcher{
     Unit(i64),
     NowWatched(i64),
@@ -29,45 +31,41 @@ enum Watcher{
 
 #[derive(Debug)]
 struct OccurLists{
-    positive: Vec<Vec<usize>>,// positive[k] contém os índices das cláusulas que têm o literal (k+1)
-    negative: Vec<Vec<usize>>,// negative[k] contém os índices das cláusulas que têm o literal -(k+1)
-}                             // indexação em base 0 😞😞😞
+    positive: Vec<Vec<usize>>,// positive[k] contém os índices das cláusulas que têm o literal +k vigiado
+    negative: Vec<Vec<usize>>,// negative[k] contém os índices das cláusulas que têm o literal -k vigiadp
+}
 
 impl OccurLists{
     fn new(n: usize) -> OccurLists{
         OccurLists{
-            positive: vec![Vec::new();n],
-            negative: vec![Vec::new();n],
+            positive: vec![Vec::new();n+1],//aloco 1 espaço a mais para garantir indexação em base 1
+            negative: vec![Vec::new();n+1],
         }
     }
 
-    fn get(&self, n: i64) -> &Vec<usize>{
-        if n<0{
-            let ind = -(n+1) as usize;
-            &self.negative[ind]
+    fn get(&self, lit: i64) -> &Vec<usize>{
+        if lit<0{
+            &self.negative[lit.abs() as usize]
         } else {
-            let ind = (n-1) as usize;
-            &self.positive[ind]
+            &self.positive[lit.abs() as usize]
         }
     }
 
-    fn get_mut(&mut self, n: i64) -> &mut Vec<usize>{
-        if n<0{
-            let ind = -(n+1) as usize;
-            &mut self.negative[ind]
+    fn get_mut(&mut self, lit: i64) -> &mut Vec<usize>{
+        if lit<0{
+            &mut self.negative[lit.abs() as usize]
         } else {
-            let ind = (n-1) as usize;
-            &mut self.positive[ind]
+            &mut self.positive[lit.abs() as usize]
         }
     }
 
-    fn add_lit_to_clause(&mut self, lit: i64, clause: usize){
+    fn add_clause_to_lit(&mut self, lit: i64, clause: usize){
         self.get_mut(lit).push(clause);
     }
 
     fn remove_clauses_from_lit(&mut self, clauses: &Vec<usize>, lit: i64){
-        let mut lit_list: &mut Vec<usize> = self.get_mut(lit);
-        *lit_list = lit_list
+        let mut lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
+        *lit_occur_list = lit_occur_list
             .drain(..)
             .filter(|x| !clauses.contains(x))
             .collect();
@@ -87,6 +85,7 @@ enum Seen {
 struct InnerAssignment{
     lit: i64, //atom number with polarity, -1,1,-2,2..
     decision_level: usize,
+    antecedent: Option<usize>,
     decision: bool, //true if assignment comes from a decide
 }
 
@@ -126,18 +125,14 @@ impl Clause{
             Unit(_) => false,
             Conflict => false,
             &NowWatched(lit) => {
-                let index: usize;
-                let polarity: bool;
-                if lit < 0{
-                    index = (-lit-1) as usize;
-                    polarity = false;
+                let polarity: bool = if lit < 0{
+                    false
                 } else if lit>0 {
-                    index = (lit-1) as usize;
-                    polarity = true;
+                    true
                 } else {
                     panic!("0 is not a literal");
-                }
-                match model[index]{
+                };
+                match model[lit.abs() as usize]{
                     None => false,
                     Some(asgmnt) => asgmnt!=polarity,
                 }
@@ -192,8 +187,8 @@ fn remove_duplicates<T: Ord>(v: &mut Vec<T>){
 // TODO: Change cnf data structure
 pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     println!("TODO: cdcl run {:?}", cnf);
-    let mut solver = Cdcl::new(cnf, lits);
-    let mut trivial = Some(solver.pre_process()); //aplica a regra PURE e outros truques de pré-processamento
+    let mut solver = Cdcl::new(lits);
+    let mut trivial = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
     while true {
       while (solver.propagate_gives_conflict(&mut trivial, false)){
             if solver.decision_level==0 {
@@ -210,8 +205,9 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
 }
 
 pub fn run_demo(){
-    let mut solver = Cdcl::new(vec![vec![1,-2,-6],vec![2,-3,5,-1,-6],vec![6,2,4],vec![1,2],vec![-6,-1,3],vec![-5,4,2]],6);
-    solver.pre_process();
+    let mut solver: Cdcl = Cdcl::new(6);
+    let cnf: Vec<Vec<i64>> = vec![vec![1,-2,-6],vec![2,-3,5,-1,-6],vec![6,2,4],vec![1,2],vec![-6,-1,3],vec![-5,4,2]];
+    solver.pre_process(cnf);
     solver.print_occur();
     solver.propagate_gives_conflict(&mut None, true);
 }
@@ -226,27 +222,27 @@ pub struct Cdcl { //remove pub
     pub decision_level: usize, // maior nível de decisão do estado
     conflicting: Option<Clause>, // cláusula conflitante
     occur_lists: OccurLists, // lista de ocorrências
-    model: Vec<Option<bool>>, //elemento k-1 é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
+    model: Vec<Option<bool>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
     debug_decide: Vec<i64>,
 }
 
 impl Cdcl {
-    pub fn new(cnf: Vec<Vec<i64>>, atoms: usize) -> Cdcl {
+    pub fn new(atoms: usize) -> Cdcl {
         Cdcl {
             partial_model: vec![],
             decision_points: vec![],
-            clauses_list: Clause::new(cnf),
+            clauses_list: vec![],
             unassigned: (1..=atoms).collect(),
             number_of_atoms: atoms,
             decision_level: 0,
             conflicting: None,
             occur_lists: OccurLists::new(0),
-            model: vec![None;atoms],
+            model: vec![None;atoms+1], //aloco 1 espaço a mais para garantir indexação em base 1
             debug_decide: vec![-4,-2],
         }
     }
 
-    fn clause_status(&self, clause_ind: usize) -> clause_states{
+    /*fn clause_status(&self, clause_ind: usize) -> clause_states{
         let mut values: Vec<Option<bool>> = vec![];
         let mut false_count: usize = 0;
         let mut true_in_values: bool = false;
@@ -272,7 +268,7 @@ impl Cdcl {
         } else {
             clause_states::unresolved
         }
-    }
+    }*/
 
     fn extend_partial_model(&mut self, lit: i64, decision: bool){
         if decision {
@@ -284,6 +280,7 @@ impl Cdcl {
             lit,
             decision_level,
             decision,
+            antecedent: None,
         };
         let atom = lit.abs() as usize;
         self.unassigned.remove(&atom);
@@ -309,18 +306,22 @@ impl Cdcl {
         };
     }
 
-    // Remove duplicatas, realiza atribuições triviais (PURE e cláusulas unitárias) e constrói a occur_list
-    pub fn pre_process(&mut self) -> VecDeque<i64>{// remove pub
-        let mut propagation_queue: VecDeque<i64> = VecDeque::new();
-        let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.number_of_atoms];
-        let mut unary_clause_assignments: Vec<i64> = vec![]; // vector pois suponho que não existem 2 cláusulas unitárias iguais na entrada
-        let mut occur_lists = OccurLists::new(self.number_of_atoms);
+    // Remove duplicatas, realiza atribuições triviais (PURE e cláusulas unitárias), remove cláusulas satisfeitas e a constrói a occur_list
+    pub fn pre_process(&mut self, cnf: Vec<Vec<i64>>) -> bool{
+        let mut decided: Vec<i64> = Vec::new();
+        let mut clauses_to_remove: HashSet<usize> = HashSet::new();
+        let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.number_of_atoms+1]; //1 extra field to index base 1
+        //let mut unary_clause_assignments: Vec<i64> = vec![]; // vector pois suponho que não existem 2 cláusulas unitárias iguais na entrada
+        let mut dual_occur_lists = OccurLists::new(self.number_of_atoms);
+        let mut full_occur_lists = OccurLists::new(self.number_of_atoms);
         for (clause_ind, clause) in self.clauses_list.iter_mut().enumerate(){
             //remove_duplicates(&mut clause.data); // remove cláusulas repetidas
             //let mut clause_is_tautology = false;
             //let mut seen_in_clause: HashSet<i64> = HashSet::new();
             if clause.data.len()==1{ // se essa cláusula só tem um literal, então só atribuições que tornam esse literal verdadeiro podem ser modelos
-                unary_clause_assignments.push(clause.data[0]);
+                if clause.data[0]==0 {panic!("0 is not a literal");}
+                decided.push(clause.data[0]);
+                clauses_to_remove.insert(clause_ind);
             }
             /*for lit in clause.iter(){ // procura cláusulas triviais
                 if seen_in_clause.contains(&(-lit)){
@@ -330,51 +331,96 @@ impl Cdcl {
                     seen_in_clause.insert(*lit);
                 }
             }*/
-            //if !clause_is_tautology{ 
             // Vou supor que não vão existir cláusulas triviais (ex: 1 -1 2 -4 0) em nossos casos de teste pelo bem da minha sanidade
-                for (i, &lit) in clause.data.iter().enumerate(){
-                    let list = occur_lists.get_mut(lit); 
-                    if lit<0{                        
-                        let index = (-lit-1) as usize;
-                        // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
-                        if i<2 {list.push(clause_ind);}
-                        seen_status[index] = match seen_status[index] {
-                            Seen::Unseen => Seen::SeenNegative,
-                            Seen::SeenPositive => Seen::SeenBoth,
-                            Seen::SeenNegative => Seen::SeenNegative,
-                            Seen::SeenBoth => Seen::SeenBoth,
-                        };
-                    } else if lit > 0 {
-                        let index = (lit-1) as usize;
-                        // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
-                        if i<2 {list.push(clause_ind);}
-                        seen_status[index] = match seen_status[index] {
-                            Seen::Unseen => Seen::SeenPositive,
-                            Seen::SeenPositive => Seen::SeenPositive,
-                            Seen::SeenNegative => Seen::SeenBoth,
-                            Seen::SeenBoth => Seen::SeenBoth,
-                        };
-                    } else {
-                        panic!("0 in clause!!!!\nThis is not a valid CNF");
-                    }
-                }        
-           // }
+            for (i, &lit) in clause.data.iter().enumerate(){
+                let mut dual_list = dual_occur_lists.get_mut(lit);
+                let mut full_list = full_occur_lists.get_mut(lit);
+                let atom = lit.abs() as usize;
+                if lit<0{                        
+                    // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
+                    if i<2 {dual_list.push(clause_ind);}
+                    full_list.push(clause_ind);
+                    seen_status[atom] = match seen_status[atom] {
+                        Seen::Unseen => Seen::SeenNegative,
+                        Seen::SeenPositive => Seen::SeenBoth,
+                        Seen::SeenNegative => Seen::SeenNegative,
+                        Seen::SeenBoth => Seen::SeenBoth,
+                    };
+                } else if lit > 0 {
+                    // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
+                    if i<2 {dual_list.push(clause_ind);}
+                    full_list.push(clause_ind);
+                    seen_status[atom] = match seen_status[atom] {
+                        Seen::Unseen => Seen::SeenPositive,
+                        Seen::SeenPositive => Seen::SeenPositive,
+                        Seen::SeenNegative => Seen::SeenBoth,
+                        Seen::SeenBoth => Seen::SeenBoth,
+                    };
+                } else {
+                    panic!("0 in clause!!!!\nThis is not a valid CNF");
+                }
+            }        
         }
-        for (index, status) in seen_status.iter().enumerate() {
+        for (index, status) in seen_status.iter().enumerate().skip(1) { //check
             match status { //Aplica PURE
-                Seen::Unseen => propagation_queue.push_back((index+1) as i64), // se o átomo não aparece na fórmula posso atribuir o valor que eu quiser
-                Seen::SeenPositive => propagation_queue.push_back((index+1) as i64),
-                Seen::SeenNegative => propagation_queue.push_back(-((index+1) as i64)),  
+                Seen::Unseen => decided.push((index) as i64), // se o átomo não aparece na fórmula posso atribuir o valor que eu quiser
+                Seen::SeenPositive => decided.push((index) as i64),
+                Seen::SeenNegative => decided.push(-(index as i64)),  
                 Seen::SeenBoth => (),
             }
         }
-        for unary in unary_clause_assignments.into_iter(){
-            if let Seen::SeenBoth = seen_status[(unary.abs() as usize)-1]{
-                propagation_queue.push_back(unary);
+        self.occur_lists = dual_occur_lists;
+        match self.grow_model_and_remove_clauses(&mut decided, &mut clauses_to_remove, &mut full_occur_lists, cnf){
+            None => false, //Unsat case
+            Some(filtered_cnf) => {
+                self.clauses_list = Clause::new(filtered_cnf);
+                true
             }
         }
-        self.occur_lists = occur_lists;
-        propagation_queue
+    }
+
+    fn grow_model_and_remove_clauses(
+        &mut self, 
+        decided: &Vec<i64>,
+        clauses_to_remove: &mut HashSet<usize>,
+        full_occur_lists: &OccurLists,
+        mut cnf: Vec<Vec<i64>>
+    ) -> Option<Vec<Vec<i64>>> {
+        for &lit in decided.iter(){
+            if !self.model_insert(lit){
+                return None; //Unsat case
+            }
+            let occurs = full_occur_lists.get(lit);
+            for &clause_ind in occurs.iter(){
+                clauses_to_remove.insert(clause_ind);
+            }
+        }
+        cnf = cnf.into_iter()
+        .enumerate()
+        .filter(|(i, _)| !clauses_to_remove.contains(i))
+        .map(|(_, item)| item)
+        .collect();
+        Some(cnf)
+    }
+
+    //qualquer adição ao modelo deve usar essa função pois o tipo do modelo pode ser refatorado
+    //ela checa se há contradição ou se um literal inválido está sendo adicionado
+    fn model_insert(&mut self, lit: i64) -> bool{
+        let atom = lit.abs() as usize;
+        match &self.model[atom]{
+            Some(true) => if lit>0 {();} else if lit<0 { return false; } else {panic!("0 is not a literal")},
+            Some(false) => if lit<0 {();} else if lit>0 { return false; } else {panic!("0 is not a literal")},
+            None => {
+                self.model[atom] = if lit>0 {
+                    Some(true)
+                } else if lit<0 {
+                    Some(false)
+                } else {
+                    panic!("0 is not a literal")
+                };
+            },
+        }
+        true
     }
 
     pub fn propagate_gives_conflict(&mut self, trivial_lits: &mut Option<VecDeque<i64>>, demo: bool)->bool{ //remove pub
@@ -444,7 +490,7 @@ impl Cdcl {
                         self.extend_partial_model(new_info, false);
                     }
                     for i in 0..lit_saw.len() {
-                        self.occur_lists.add_lit_to_clause(lit_saw[i], in_clause[i]);
+                        self.occur_lists.add_clause_to_lit(lit_saw[i], in_clause[i]);
                     }
                     self.occur_lists.remove_clauses_from_lit(&in_clause,-current);
                     if demo{
@@ -569,5 +615,56 @@ mod tests {
         }
     }
 
-    
+    #[test]
+    fn pre_process_can_solve(){
+        let mut solver: Cdcl = Cdcl::new(6);
+        let original_cnf: Vec<Vec<i64>> = vec![ //every clause has 1 (verified by pure) or 4 (verified by unit clause)
+                                            vec![1,4],
+                                            vec![1,-2,-6],
+                                            vec![2,-3,5,1,-6],
+                                            vec![6,2,-4],
+                                            vec![1,2],
+                                            vec![-6,1,3],
+                                            vec![-5,-4,2],
+                                            vec![-4],
+                                            vec![1, 2, 3]
+                                        ];
+        let target_cnf: Vec<Vec<i64>> = vec![];
+        solver.pre_process(original_cnf);
+        for (i, c) in solver.clauses_list.iter().enumerate(){
+            for (j,&lit) in c.data.iter().enumerate(){
+                assert_eq!(lit,target_cnf[i][j]);
+            }
+        }
+    }
+
+    fn pre_process_worked(){
+        let mut solver: Cdcl = Cdcl::new(6);
+        let original_cnf: Vec<Vec<i64>> = vec![ //must remove clauses with 1 (verified by unit clause) or -2 (verified by pure)
+                                            vec![-1,-2],
+                                            vec![1],
+                                            vec![-2,3,4,5],
+                                            vec![6,-7],
+                                            vec![5,7],
+                                            vec![1,-5,6],
+                                            vec![1,-2,5],
+                                            vec![-1,4,5],
+                                            vec![-3,-4,-6],
+                                            vec![1,-4],
+                                            vec![-3,4,-5],
+                                        ];
+        let target_cnf: Vec<Vec<i64>> = vec![ //must remove clauses with 1 (verified by unit clause) or -2 (verified by pure)
+                                        vec![6,-7],
+                                        vec![5,7],
+                                        vec![-1,4,5],
+                                        vec![-3,-4,-6],
+                                        vec![-3,4,-5],
+                                    ];
+        solver.pre_process(original_cnf);
+        for (i, c) in solver.clauses_list.iter().enumerate(){
+            for (j,&lit) in c.data.iter().enumerate(){
+                assert_eq!(lit,target_cnf[i][j]);
+            }
+        }
+    }
 }
