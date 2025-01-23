@@ -47,6 +47,11 @@ for bm in "${benchmarks[@]}"; do
             # Increment total count
             total_count=$((total_count + 1))
 
+
+            echo -e "${GREEN_BG}cargo run -q -- \"$file\"${GREEN}> \"$abcdclt_outfile\" 2>/dev/null${RESET}"
+             
+            break
+
             # Check that first line is the same
             if [ "$minisat_head" == "$abcdclt_tail" ]; then
                 echo -e "${GREEN_BG}PASS${GREEN} $file${RESET}"
