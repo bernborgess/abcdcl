@@ -1,6 +1,7 @@
 // use indexmap::IndexSet;
 use rand::seq::IteratorRandom;
 use rand::Rng;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fmt;
@@ -14,8 +15,8 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     let mut solver: Cdcl = Cdcl::new(lits);
     let mut trivial: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
     solver.build_occur_lists();
-    while true {
-        while (solver.propagate_gives_conflict(&mut trivial, false)) {
+    loop {
+        while solver.propagate_gives_conflict(&mut trivial, false) {
             if solver.decision_level == 0 {
                 return UNSAT;
             } else {
@@ -26,46 +27,36 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
         //remove_lemmas_if_applicable();
         //    if (!decide()) returns SAT(self.format()); // All vars assigned
     }
-    CdclResult::UNSAT
+}
+
+fn get_sign(lit: i64) -> bool {
+    match lit.cmp(&0) {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        Ordering::Equal => panic!("0 is not a literal"),
+    }
 }
 
 //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
 //ela checa se há contradição ou se um literal inválido está sendo adicionado
-fn model_insert(model: &mut Vec<Option<bool>>, lit: i64) -> bool {
+fn model_insert(model: &mut [Option<bool>], lit: i64) -> bool {
     let atom = lit.unsigned_abs() as usize;
     match model[atom] {
-        Some(true) => {
-            if lit > 0 {
-                return true;
-            } else if lit < 0 {
-                return false;
+        Some(b) => {
+            if get_sign(lit) {
+                b
             } else {
-                panic!("0 is not a literal")
-            }
-        }
-        Some(false) => {
-            if lit < 0 {
-                return true;
-            } else if lit > 0 {
-                return false;
-            } else {
-                panic!("0 is not a literal")
+                !b
             }
         }
         None => {
-            model[atom] = if lit > 0 {
-                Some(true)
-            } else if lit < 0 {
-                Some(false)
-            } else {
-                panic!("0 is not a literal")
-            };
+            model[atom] = Some(get_sign(lit));
+            true
         }
     }
-    true
 }
 
-fn model_disagrees(model: &Vec<Option<bool>>, lit: i64) -> bool {
+fn model_disagrees(model: &[Option<bool>], lit: i64) -> bool {
     match model[lit.unsigned_abs() as usize] {
         Some(b) => b != (lit > 0),
         None => false,
@@ -139,7 +130,7 @@ impl OccurLists {
     }
 
     fn remove_clauses_from_lit(&mut self, clauses: &Vec<usize>, lit: i64) {
-        let mut lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
+        let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
         *lit_occur_list = lit_occur_list
             .drain(..)
             .filter(|x| !clauses.contains(x))
@@ -147,7 +138,7 @@ impl OccurLists {
     }
 
     fn remove_clause_from_lit(&mut self, clause: usize, lit: i64) {
-        let mut lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
+        let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
         *lit_occur_list = lit_occur_list.drain(..).filter(|&x| clause != x).collect();
     }
 }
@@ -235,22 +226,13 @@ impl Clause {
     }
 
     //Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
-    fn satisfied_or_falsified(&self, status: &Watcher, model: &Vec<Option<bool>>) -> Option<bool> {
+    fn satisfied_or_falsified(&self, status: &Watcher, model: &[Option<bool>]) -> Option<bool> {
         match status {
             Watcher::Unit(_) => None,
             Watcher::Conflict => None,
             &Watcher::NewWatched(to) => {
-                let polarity: bool = if to < 0 {
-                    false
-                } else if to > 0 {
-                    true
-                } else {
-                    panic!("0 is not a literal");
-                };
-                match model[to.abs() as usize] {
-                    None => None,
-                    Some(asgmnt) => Some(asgmnt == polarity),
-                }
+                let polarity = get_sign(to);
+                model[to.unsigned_abs() as usize].map(|assignment| assignment == polarity)
             }
         }
     }
@@ -349,16 +331,9 @@ impl Cdcl {
 
     fn conflict_model(&self, lit: i64) -> bool {
         let ind: usize = lit.unsigned_abs() as usize;
-        let sign = if lit < 0 {
-            false
-        } else if lit > 0 {
-            true
-        } else {
-            panic!("0 não é um literal")
-        };
         match self.model[ind] {
             None => false,
-            Some(assignment) => assignment != sign,
+            Some(assignment) => assignment != get_sign(lit),
         }
     }
 
@@ -397,28 +372,30 @@ impl Cdcl {
             }*/
             // Vou supor que não vão existir cláusulas triviais (ex: 1 -1 2 -4 0) em nossos casos de teste pelo bem da minha sanidade
             for &lit in clause.iter() {
-                let mut full_list = full_occur_lists.get_mut(lit);
+                let full_list = full_occur_lists.get_mut(lit);
                 let atom = lit.unsigned_abs() as usize;
-                if lit < 0 {
-                    // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
-                    full_list.push(clause_ind);
-                    seen_status[atom] = match seen_status[atom] {
-                        Seen::Unseen => Seen::Negative,
-                        Seen::Positive => Seen::Both,
-                        Seen::Negative => Seen::Negative,
-                        Seen::Both => Seen::Both,
-                    };
-                } else if lit > 0 {
-                    // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
-                    full_list.push(clause_ind);
-                    seen_status[atom] = match seen_status[atom] {
-                        Seen::Unseen => Seen::Positive,
-                        Seen::Positive => Seen::Positive,
-                        Seen::Negative => Seen::Both,
-                        Seen::Both => Seen::Both,
-                    };
-                } else {
-                    panic!("0 in clause!!!!\nThis is not a valid CNF");
+                match lit.cmp(&0) {
+                    Ordering::Less => {
+                        // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
+                        full_list.push(clause_ind);
+                        seen_status[atom] = match seen_status[atom] {
+                            Seen::Unseen => Seen::Negative,
+                            Seen::Positive => Seen::Both,
+                            Seen::Negative => Seen::Negative,
+                            Seen::Both => Seen::Both,
+                        };
+                    }
+                    Ordering::Greater => {
+                        // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
+                        full_list.push(clause_ind);
+                        seen_status[atom] = match seen_status[atom] {
+                            Seen::Unseen => Seen::Positive,
+                            Seen::Positive => Seen::Positive,
+                            Seen::Negative => Seen::Both,
+                            Seen::Both => Seen::Both,
+                        };
+                    }
+                    Ordering::Equal => panic!("0 in clause - This is not a valid CNF"),
                 }
             }
         }
@@ -491,31 +468,17 @@ impl Cdcl {
         let atom = lit.unsigned_abs() as usize;
         match &self.model[atom] {
             Some(true) => {
-                if lit > 0 {
-                    ();
-                } else if lit < 0 {
+                if !get_sign(lit) {
                     return false;
-                } else {
-                    panic!("0 is not a literal")
                 }
             }
             Some(false) => {
-                if lit < 0 {
-                    ();
-                } else if lit > 0 {
+                if get_sign(lit) {
                     return false;
-                } else {
-                    panic!("0 is not a literal")
                 }
             }
             None => {
-                self.model[atom] = if lit > 0 {
-                    Some(true)
-                } else if lit < 0 {
-                    Some(false)
-                } else {
-                    panic!("0 is not a literal")
-                };
+                self.model[atom] = Some(get_sign(lit));
             }
         }
         true
@@ -532,10 +495,7 @@ impl Cdcl {
         let mut model = mem::take(&mut self.model);
         let mut occur_lists = &mut self.occur_lists;
         let mut trivial_lits: Option<VecDeque<i64>> = trivial_lits_ref.take();
-        let mut propagate_arr: VecDeque<i64> = match trivial_lits {
-            Some(q) => q,
-            None => VecDeque::new(),
-        };
+        let mut propagate_arr: VecDeque<i64> = trivial_lits.unwrap_or_default();
         loop {
             match propagate_arr.pop_front() {
                 None => {
