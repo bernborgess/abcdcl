@@ -3,7 +3,7 @@ use occurlist::OccurLists;
 use rand::{seq::IteratorRandom, Rng};
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
-use std::mem;
+use std::{env, mem};
 use utils::{get_sign, print_model};
 use CdclResult::*;
 
@@ -40,7 +40,8 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
 pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     // eprintln!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
-    let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
+    let mut trivial_or_decided: Option<VecDeque<i64>> = None; //aplica a regra PURE e outros truques de pré-processamento
+    solver.clauses_list = Clause::new(cnf);
     if solver.clauses_list.is_empty() {
         return solver.yield_model();
     }
@@ -283,7 +284,7 @@ impl Cdcl {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model = mem::take(&mut self.model);
         print_model(&model);
-        //self.print_occur();
+        //self.f();
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
         let trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
         println!("trivial_or_decided: {:?}", &trivial_or_decided);
@@ -381,10 +382,9 @@ impl Cdcl {
     }
 
     fn debug_decide(&mut self) -> Option<i64> {
-        let mut rng = rand::thread_rng();
         let at: Option<i64> = self.debug_decisions.pop();
-        let polarity: bool = rng.gen();
         if let Some(atom) = at {
+            let polarity: bool = get_sign(atom);
             self.unassigned.remove(&(atom.unsigned_abs() as usize));
             if polarity {
                 println!("decided p{atom}");
@@ -392,8 +392,8 @@ impl Cdcl {
                 Some(atom)
             } else {
                 println!("decided ¬p{atom}");
-                self.model_insert(-atom);
-                Some(-atom)
+                self.model_insert(atom);
+                Some(atom)
             }
         } else {
             None
@@ -570,16 +570,17 @@ mod tests {
 
     #[test]
     fn backtrack_small_case() {
+        env::set_var("RUST_LOG", "debug");
         let cnf = vec![
             vec![1, -2, -6],
             vec![2, -3, 5, -1, -6],
-            vec![6, 2, 4],
+            vec![-5, 4, 2],
             vec![1, 2],
             vec![-6, -1, 3],
-            vec![-5, 4, 2],
+            vec![6, 2, 4],
         ];
 
-        let result = run_cdcl_debug(cnf, 2);
+        let result = run_cdcl_debug(cnf, 6);
         match result {
             UNSAT => panic!("Expected SAT"),
             SAT(m) => println!("TODO"),
