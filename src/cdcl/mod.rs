@@ -24,10 +24,16 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     solver.build_occur_lists();
     loop {
         while solver.propagate_gives_conflict(&mut trivial_or_decided) {
-            if solver.decision_level == 0 {
-                return UNSAT;
-            } else {
-                let b = solver.analyze_conflict();
+            match solver.analyze_conflict() {
+                None => return UNSAT,
+                Some((b, learnt_clause)) => {
+                    println!("VAI SE FODER!!!");
+                    // Add learnt clause to clause list
+                    // Apply backtrack of dl b
+                    // Set new dl to b
+                    // Add negation of the unset literal in learnt_clause to the model
+                    // Add is to propagate too
+                }
             }
         }
         //restart_if_applicable();
@@ -336,19 +342,72 @@ impl Cdcl {
     }*/
 
     /// Returns what decision level needs to be decremented
-    fn analyze_conflict(&self) -> usize {
-        match &self.conflicting {
-            None => panic!("Conflict was not defined!"),
-            Some(c) => {
-                let dl_guys: Vec<i64> = c
-                    .data
-                    .iter()
-                    .filter(|&&x| self.literal_has_max_dl(x))
-                    .cloned()
-                    .collect();
-            }
+    fn analyze_conflict(&self) -> Option<(usize, Clause)> {
+        if self.decision_level == 0 {
+            return None;
         }
-        0
+
+        let mut learnt = self
+            .conflicting
+            .as_ref()
+            .expect("Conflict was not defined!")
+            .clone();
+
+        // literals with current decision level
+        let mut literals: Vec<i64> = learnt
+            .data
+            .iter()
+            .filter(|lit| self.literal_has_max_dl(**lit))
+            .copied()
+            .collect();
+
+        while literals.len() != 1 {
+            // Implied literals
+            literals.retain(|lit| {
+                let lit_idx = lit.unsigned_abs() as usize;
+                self.model[lit_idx]
+                    .expect("Conflict should be assigned for all variables")
+                    .antecedent
+                    .is_some()
+            });
+
+            // Select any literal that meets the criterion
+            let literal = literals.first();
+            if literal.is_none() {
+                break;
+            }
+            let literal = *literal.unwrap();
+            let antecedent = &self.get_antecedent(literal);
+            if antecedent.is_none() {
+                break;
+            }
+            let antecedent = &self.clauses_list[antecedent.unwrap()];
+            learnt = learnt.resolution(antecedent, literal.unsigned_abs() as usize);
+
+            // Literals with current decision level
+            literals = learnt
+                .data
+                .iter()
+                .filter(|lit| self.literal_has_max_dl(**lit))
+                .copied()
+                .collect();
+        }
+
+        // out of the loop, `learnt` is now the new clause
+        // compute the backtrack level b (second largest decision level)
+        let mut b = 0;
+        for lit in &learnt.data {
+            if self.literal_has_max_dl(*lit) {
+                continue;
+            }
+            b = std::cmp::max(b, self.literal_get_dl(*lit));
+        }
+        Some((b, learnt))
+    }
+
+    /// Returns index of clause that propagated this literal
+    fn get_antecedent(&self, lit: i64) -> Option<usize> {
+        self.model[lit.unsigned_abs() as usize]?.antecedent
     }
 
     /// Add a new clause and prepares the watched literals
@@ -367,18 +426,28 @@ impl Cdcl {
         self.clauses_list.push(learnt_clause);
     }
 
-    fn literal_has_max_dl(&self, lit: i64) -> bool {
-        match &self.model[(lit.unsigned_abs() as usize)] {
-            None => false,
-            Some(asgnmt) => asgnmt.dl == self.decision_level,
+    fn literal_is_undefined(&self, lit: i64) -> bool {
+        self.model[lit.unsigned_abs() as usize].is_none()
+    }
+
+    fn literal_get_dl(&self, lit: i64) -> usize {
+        if let Some(ass) = self.model[lit.unsigned_abs() as usize] {
+            ass.dl
+        } else {
+            0
         }
     }
 
     fn literal_has_dl(&self, lit: i64, dl: usize) -> bool {
-        match &self.model[(lit.unsigned_abs() as usize)] {
-            None => false,
-            Some(asgnmt) => asgnmt.dl == dl,
+        if self.literal_is_undefined(lit) {
+            return false;
         }
+        let actual_dl = self.literal_get_dl(lit);
+        actual_dl == dl
+    }
+
+    fn literal_has_max_dl(&self, lit: i64) -> bool {
+        self.literal_has_dl(lit, self.decision_level)
     }
 
     fn restart_if_applicable(&self) {

@@ -142,7 +142,7 @@ impl Clause {
         }
     }
 
-    fn resolution(&self, other: &Clause, pivot: usize) -> Clause {
+    pub fn resolution(&self, other: &Clause, pivot: usize) -> Clause {
         let pos_pivot = pivot as i64;
         let mut first: HashSet<i64> = self.data.iter().cloned().collect();
         let second: HashSet<i64> = other.data.iter().cloned().collect();
