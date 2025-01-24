@@ -14,7 +14,7 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     // eprintln!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
     let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
-    if solver.clauses_list.len() == 0 {
+    if solver.clauses_list.is_empty() {
         return solver.yield_model();
     }
     solver.build_occur_lists();
@@ -189,7 +189,14 @@ pub struct Clause {
 impl fmt::Debug for Clause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Define how you want your struct to be printed
-        write!(f, "{:?}", self.data)
+        for (i, lit) in self.data.iter().enumerate() {
+            if (self.watch_ptr[0] == i) || (self.watch_ptr[1] == i) {
+                write!(f, "•");
+            }
+            write!(f, "{:?}", lit);
+        }
+        writeln!(f, "");
+        Ok(())
     }
 }
 
@@ -204,7 +211,7 @@ impl Clause {
             .collect()
     }
 
-    fn watch(&mut self, lit: i64, model: &Vec<Option<bool>>) -> Watcher {
+    fn watch(&mut self, lit: i64, model: &[Option<bool>]) -> Watcher {
         if self.data.len() == 1 {
             return Unit(lit);
         }
@@ -450,7 +457,7 @@ impl Cdcl {
             if !self.model_insert(lit) {
                 return None; //Unsat case
             }
-            self.unassigned.remove(&(lit.unsigned_abs() as usize));
+            self.unassigned.remove(&(lit.abs() as usize));
             let occurs = full_occur_lists.get(lit);
             for &clause_ind in occurs.iter() {
                 clauses_to_remove.insert(clause_ind);
@@ -556,14 +563,17 @@ impl Cdcl {
         eprintln!("TODO: remove_lemmas_if_applicable");
     }
 
-    fn decide(&self) -> Option<i64> {
+    fn decide(&mut self) -> Option<i64> {
         let mut rng = rand::thread_rng();
         let at: Option<&usize> = self.unassigned.iter().choose(&mut rng);
         let polarity: bool = rng.gen();
         if let Some(&atom) = at {
+            self.unassigned.remove(&atom);
             if polarity {
+                self.model_insert(atom as i64);
                 Some(atom as i64)
             } else {
+                self.model_insert(-(atom as i64));
                 Some(-(atom as i64))
             }
         } else {
@@ -604,7 +614,7 @@ impl Cdcl {
     }
 
     pub fn yield_model(&self) -> CdclResult {
-        CdclResult::SAT(self.model.iter().map(|k| k.unwrap()).collect())
+        CdclResult::SAT(self.model.iter().skip(1).map(|k| k.unwrap()).collect())
     }
 }
 
