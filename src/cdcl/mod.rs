@@ -37,6 +37,31 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     }
 }
 
+pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
+    // eprintln!("TODO: cdcl run {:?}", cnf);
+    let mut solver: Cdcl = Cdcl::new(lits);
+    let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
+    if solver.clauses_list.is_empty() {
+        return solver.yield_model();
+    }
+    solver.build_occur_lists();
+    loop {
+        while solver.propagate_gives_conflict(&mut trivial_or_decided) {
+            if solver.decision_level == 0 {
+                return UNSAT;
+            } else {
+                solver.analyze_conflict();
+            }
+        }
+        //restart_if_applicable();
+        //remove_lemmas_if_applicable();
+        match solver.debug_decide() {
+            None => return solver.yield_model(),
+            Some(a) => trivial_or_decided = Some(VecDeque::from(vec![a])),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Seen {
     Unseen,
@@ -90,10 +115,7 @@ impl Cdcl {
             conflicting: None,
             occur_lists: OccurLists::new(0),
             model: vec![None; atoms + 1], //aloco 1 espaço a mais para garantir indexação em base 1
-            debug_decisions: vec![
-                13, -279, -298, 192, 228, -212, -117, -154, -6, 250, 281, 93, 215, 53, -180, -189,
-                -104, -106, -217, 224, -221, -216,
-            ],
+            debug_decisions: vec![-4, -2],
         }
     }
 
