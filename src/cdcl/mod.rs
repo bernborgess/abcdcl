@@ -289,21 +289,6 @@ fn remove_duplicates<T: Ord>(v: &mut Vec<T>) {
     v.dedup();
 }
 
-pub fn run_demo() {
-    let mut solver: Cdcl = Cdcl::new(6);
-    let cnf: Vec<Vec<i64>> = vec![
-        vec![1, -2, -6],
-        vec![2, -3, 5, -1, -6],
-        vec![6, 2, 4],
-        vec![1, 2],
-        vec![-6, -1, 3],
-        vec![-5, 4, 2],
-    ];
-    solver.pre_process(cnf);
-    solver.print_occur();
-    // solver.propagate_gives_conflict(&mut None, true);
-}
-
 pub struct Cdcl {
     //remove pub
     //partial_model: Vec<InnerAssignment>, // Vetor usado pelas regras,
