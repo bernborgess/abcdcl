@@ -1,22 +1,28 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Literal {
-    variable: i32,
-    negation: bool,
+    pub variable: usize,
+    pub polarity: bool,
 }
 
 impl Literal {
     // Constructor to create a new Literal
-    pub fn new(variable: i32, negation: bool) -> Self {
-        Literal { variable, negation }
+    pub fn new(val: &i64) -> Self {
+        if *val == 0 {
+            panic!("0 cannot be a literal");
+        }
+        Literal {
+            variable: val.unsigned_abs() as usize,
+            polarity: *val > 0,
+        }
     }
 
     // Method to return the negation of the literal
-    pub fn negation(self) -> Self {
+    pub fn negate(self) -> Self {
         Literal {
             variable: self.variable,
-            negation: !self.negation,
+            polarity: !self.polarity,
         }
     }
 }
@@ -24,7 +30,7 @@ impl Literal {
 // Implement the `Display` trait for `Literal`
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.negation {
+        if self.polarity {
             write!(f, "¬{}", self.variable)
         } else {
             write!(f, "{}", self.variable)
