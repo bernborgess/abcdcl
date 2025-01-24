@@ -4,7 +4,7 @@ use occurlist::OccurLists;
 use rand::{seq::IteratorRandom, Rng};
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
-use std::{env, mem};
+use std::mem;
 use utils::{get_sign, print_model};
 use CdclResult::*;
 
@@ -27,7 +27,7 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
             if solver.decision_level == 0 {
                 return UNSAT;
             } else {
-                solver.analyze_conflict();
+                let b = solver.analyze_conflict();
             }
         }
         //restart_if_applicable();
@@ -336,13 +336,33 @@ impl Cdcl {
     }*/
 
     /// Returns what decision level needs to be decremented
-    fn analyze_conflict(&self) {
-        if self.conflicting.is_none() {
-            panic!("Conflict was not defined!");
+    fn analyze_conflict(&self) -> usize {
+        match &self.conflicting {
+            None => panic!("Conflict was not defined!"),
+            Some(c) => {
+                let dl_guys: Vec<i64> = c
+                    .data
+                    .iter()
+                    .filter(|&&x| self.literal_has_max_dl(x))
+                    .cloned()
+                    .collect();
+            }
         }
-        // Set the new decision level
-        // Backtracks the model
-        eprintln!("TODO: analyze_conflict");
+        0
+    }
+
+    fn literal_has_max_dl(&self, lit: i64) -> bool {
+        match &self.model[(lit.unsigned_abs() as usize)] {
+            None => false,
+            Some(asgnmt) => asgnmt.dl == self.decision_level,
+        }
+    }
+
+    fn literal_has_dl(&self, lit: i64, dl: usize) -> bool {
+        match &self.model[(lit.unsigned_abs() as usize)] {
+            None => false,
+            Some(asgnmt) => asgnmt.dl == dl,
+        }
     }
 
     fn restart_if_applicable(&self) {
