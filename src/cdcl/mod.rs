@@ -14,13 +14,13 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     println!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
     let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
-    if solver.clauses_list.len()==0{
+    if solver.clauses_list.len() == 0 {
         return solver.SAT();
     }
     solver.build_occur_lists();
     loop {
-      while solver.propagate_gives_conflict(&mut trivial_or_decided){
-            if solver.decision_level==0 {
+        while solver.propagate_gives_conflict(&mut trivial_or_decided) {
+            if solver.decision_level == 0 {
                 return UNSAT;
             } else {
                 solver.analyze_conflict();
@@ -28,7 +28,7 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
         }
         //restart_if_applicable();
         //remove_lemmas_if_applicable();
-        match solver.decide(){
+        match solver.decide() {
             None => return solver.SAT(),
             Some(a) => trivial_or_decided = Some(VecDeque::from(vec![a])),
         }
@@ -288,26 +288,16 @@ fn remove_duplicates<T: Ord>(v: &mut Vec<T>) {
     v.dedup();
 }
 
-
-
-pub fn run_demo(){
-    let mut solver: Cdcl = Cdcl::new(6);
-    let cnf: Vec<Vec<i64>> = vec![vec![1,-2,-6],vec![2,-3,5,-1,-6],vec![6,2,4],vec![1,2],vec![-6,-1,3],vec![-5,4,2]];
-    solver.pre_process(cnf);
-    solver.print_occur();
-    solver.propagate_gives_conflict(&mut None, true);
-}
-
-
-pub struct Cdcl { //remove pub
+pub struct Cdcl {
+    //remove pub
     //partial_model: Vec<InnerAssignment>, // Vetor usado pelas regras,
     //decision_points: Vec<usize>, // Se o valor k está nesse vetor, quer dizer que partial_model[k] está em um decision level acima de partial_model[k-1]
     pub clauses_list: Vec<Clause>, // array de cláusulas
-    unassigned: HashSet<usize>,  // conjunto de todos os átomos sem valor atribuído
-    number_of_atoms: usize,      // total de átomos
-    pub decision_level: usize,   // maior nível de decisão do estado
-    conflicting: Option<Clause>, // cláusula conflitante
-    occur_lists: OccurLists,     //lista de ocorrências
+    unassigned: HashSet<usize>,    // conjunto de todos os átomos sem valor atribuído
+    number_of_atoms: usize,        // total de átomos
+    pub decision_level: usize,     // maior nível de decisão do estado
+    conflicting: Option<Clause>,   // cláusula conflitante
+    occur_lists: OccurLists,       //lista de ocorrências
     model: Vec<Option<bool>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
 }
 
@@ -322,7 +312,7 @@ impl Cdcl {
             decision_level: 0,
             conflicting: None,
             occur_lists: OccurLists::new(0),
-            model: vec![None;atoms+1], //aloco 1 espaço a mais para garantir indexação em base 1
+            model: vec![None; atoms + 1], //aloco 1 espaço a mais para garantir indexação em base 1
         }
     }
 
@@ -483,18 +473,18 @@ impl Cdcl {
 
     //TODO: Test
     pub fn propagate_gives_conflict(
-        &mut self, 
-        trivial_or_decided_ref: &mut Option<VecDeque<i64>>)->bool{
-
+        &mut self,
+        trivial_or_decided_ref: &mut Option<VecDeque<i64>>,
+    ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model = mem::take(&mut self.model);
         let mut occur_lists = &mut self.occur_lists;
         let mut trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
-        let mut propagate_arr: VecDeque<i64> = match trivial_or_decided{
+        let mut propagate_arr: VecDeque<i64> = match trivial_or_decided {
             Some(q) => q,
             None => VecDeque::new(),
         };
-        loop{
+        loop {
             match propagate_arr.pop_front() {
                 None => {
                     self.model = model;
