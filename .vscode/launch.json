@@ -30,14 +30,16 @@
                     "--no-run",
                     "--lib",
                     "--package=abcdclt",
-                    "backtrack_small_case"
+                    "two_cnf_is_unsat",
                 ],
                 "filter": {
                     "name": "abcdclt",
                     "kind": "lib"
                 }
             },
-            "args": [],
+            "args": [
+                "--nocapture"
+            ],
             "cwd": "${workspaceFolder}"
         }
     ]
