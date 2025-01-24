@@ -1,5 +1,5 @@
+use std::collections::HashSet;
 use std::fmt;
-
 pub enum Watcher {
     Unit(i64),
     //AlreadyWatched(i64),
@@ -137,6 +137,21 @@ impl Clause {
             Unit(self.point((i + 1) % 2))
         } else {
             NewWatched(self.point(i)) // retorna o novo literal vigiado
+        }
+    }
+
+    fn resolution(&self, other: &Clause, pivot: usize) -> Clause {
+        let pos_pivot = pivot as i64;
+        let mut first: HashSet<i64> = self.data.iter().cloned().collect();
+        let second: HashSet<i64> = other.data.iter().cloned().collect();
+        first.extend(&second);
+        first.remove(&pos_pivot);
+        first.remove(&(-pos_pivot));
+        let data: Vec<i64> = first.into_iter().collect();
+        Clause {
+            data,
+            watch_ptr: [0, 1],
+            status: ClauseStates::Unresolved,
         }
     }
 }

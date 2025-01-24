@@ -599,7 +599,6 @@ mod tests {
 
     #[test]
     fn backtrack_small_case() {
-        env::set_var("RUST_LOG", "debug");
         let cnf = vec![
             vec![1, -2, -6],
             vec![2, -3, 5, -1, -6],
