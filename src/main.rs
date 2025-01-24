@@ -1,5 +1,7 @@
-use abcdclt::cdcl::*;
-use abcdclt::{cdcl::run_cdcl, parser::read_cnf};
+use abcdclt::{
+    cdcl::{run_cdcl, CdclResult},
+    parser::read_cnf,
+};
 
 fn main() {
     let (cnf, lits) = read_cnf();

@@ -1,0 +1,43 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'abcdclt'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-q",
+                ],
+                "filter": {
+                    "name": "abcdclt",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "test/ex1.cnf"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'abcdclt'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=abcdclt"
+                ],
+                "filter": {
+                    "name": "abcdclt",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
