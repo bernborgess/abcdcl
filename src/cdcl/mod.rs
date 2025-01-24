@@ -10,6 +10,7 @@ use CdclResult::*;
 
 pub mod assignment;
 pub mod clause;
+pub mod literal;
 pub mod occurlist;
 pub mod utils;
 
