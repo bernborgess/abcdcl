@@ -1,3 +1,4 @@
+use super::assignment::Assignment;
 use std::cmp::Ordering;
 
 pub fn get_sign(lit: i64) -> bool {
@@ -8,13 +9,15 @@ pub fn get_sign(lit: i64) -> bool {
     }
 }
 
-pub fn print_model(model: &[Option<bool>]) {
+pub fn print_model(model: &[Option<Assignment>]) {
     print!("current model: ");
     for (i, m) in model.iter().enumerate().skip(1) {
-        match m {
-            Some(true) => print!("{i},"),
-            Some(false) => print!("-{i},"),
-            None => (),
+        if let Some(asgnmt) = m {
+            if asgnmt.polarity {
+                print!("{i},");
+            } else {
+                print!("-{i},");
+            }
         }
     }
     println!();
