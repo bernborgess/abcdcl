@@ -283,11 +283,11 @@ impl Cdcl {
     ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model = mem::take(&mut self.model);
-        print_model(&model);
+        //print_model(&model);
         //self.f();
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
         let trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
-        println!("trivial_or_decided: {:?}", &trivial_or_decided);
+        //println!("trivial_or_decided: {:?}", &trivial_or_decided);
         let mut propagate_arr: VecDeque<i64> = trivial_or_decided.unwrap_or_default();
         loop {
             match propagate_arr.pop_front() {
@@ -299,9 +299,9 @@ impl Cdcl {
                     //self.extend_partial_model(current, decision);
                     //let mut update_model: Vec<i64> = vec![];
                     let clauses_to_watch: Vec<usize> = occur_lists.take(-current);
-                    println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
+                    //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
                     for &c_ind in clauses_to_watch.iter() {
-                        println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
+                        //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                         match self.clauses_list[c_ind].watch(-current, &model) {
                             // no unit found
                             NewWatched(new_watched) => {
@@ -387,11 +387,11 @@ impl Cdcl {
             let polarity: bool = get_sign(atom);
             self.unassigned.remove(&(atom.unsigned_abs() as usize));
             if polarity {
-                println!("decided p{atom}");
+                //println!("decided p{atom}");
                 self.model_insert(atom);
                 Some(atom)
             } else {
-                println!("decided ¬p{atom}");
+                //println!("decided ¬p{atom}");
                 self.model_insert(atom);
                 Some(atom)
             }
