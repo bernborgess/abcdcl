@@ -28,7 +28,7 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
         }
         //restart_if_applicable();
         //remove_lemmas_if_applicable();
-        match solver.decide() {
+        match solver.debug_decide() {
             None => return solver.yield_model(),
             Some(a) => trivial_or_decided = Some(VecDeque::from(vec![a])),
         }
@@ -76,15 +76,36 @@ fn model_insert(model: &mut [Option<bool>], lit: i64) -> bool {
     }
 }
 
-fn model_disagrees(model: &[Option<bool>], lit: i64) -> bool {
+/*fn model_disagrees(model: &[Option<bool>], lit: i64) -> bool {
     match model[lit.unsigned_abs() as usize] {
         Some(b) => b != (lit > 0),
         None => false,
     }
+}*/
+
+//Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
+fn model_opinion(model: &[Option<bool>], lit: i64) -> Option<bool> {
+    match model[lit.unsigned_abs() as usize] {
+        Some(b) => Some(b == (lit > 0)),
+        None => None,
+    }
+}
+
+fn print_model(model: &[Option<bool>]) {
+    print!("current model: ");
+    for (i, m) in model.iter().enumerate().skip(1) {
+        match m {
+            Some(true) => print!("{i},"),
+            Some(false) => print!("-{i},"),
+            None => (),
+        }
+    }
+    println!();
 }
 
 enum Watcher {
     Unit(i64),
+    //AlreadyWatched(i64),
     NewWatched(i64),
     Conflict,
 }
@@ -193,7 +214,7 @@ impl fmt::Debug for Clause {
             if (self.watch_ptr[0] == i) || (self.watch_ptr[1] == i) {
                 write!(f, "•");
             }
-            write!(f, "{:?}", lit);
+            write!(f, "{:?},", lit);
         }
         writeln!(f, "");
         Ok(())
@@ -212,42 +233,46 @@ impl Clause {
     }
 
     fn watch(&mut self, lit: i64, model: &[Option<bool>]) -> Watcher {
-        if self.data.len() == 1 {
-            return Unit(lit);
-        }
-        let ind: usize = if self.point(0) == lit {
-            //seleciona o ponteiro que vai ser movido
-            0
-        } else if self.point(1) == lit {
-            1
+        if let ClauseStates::Satisfied(lit) = self.status {
+            Watcher::NewWatched(lit)
         } else {
-            panic!("There's only 2 pointers")
-        };
-
-        //move o ponteiro
-        let mut status: Watcher = self.next(ind);
-
-        //se não encontrar uma cláusula unitária, checa o novo literal vigiado
-        //se o novo literal vigiado for falseado pelo modelo, move o ponteiro de novo
-        //se o novo literal vigiado for satisfeito pelo modelo, para de vigiar a cláusula
-        let mut sat_or_unsat = self.satisfied_or_falsified(&status, model);
-        while let Some(false) = &sat_or_unsat {
-            status = self.next(ind);
-            sat_or_unsat = self.satisfied_or_falsified(&status, model);
-        }
-
-        match &status{
-            &Watcher::Unit(to_prop) => self.status = ClauseStates::Unit(to_prop),
-            &Watcher::NewWatched(new_lit) => {
-                match sat_or_unsat{
-                    Some(true) => self.status = ClauseStates::Satisfied(new_lit),
-                    Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
-                    None => self.status = ClauseStates::Unresolved,
-                }
+            if self.data.len() == 1 {
+                return Unit(lit);
             }
-            Watcher::Conflict => panic!("Should be dead"),
+            let ind: usize = if self.point(0) == lit {
+                //seleciona o ponteiro que vai ser movido
+                0
+            } else if self.point(1) == lit {
+                1
+            } else {
+                panic!("There's only 2 pointers")
+            };
+
+            //move o ponteiro
+            let mut status: Watcher = self.next(ind);
+
+            //se não encontrar uma cláusula unitária, checa o novo literal vigiado
+            //se o novo literal vigiado for falseado pelo modelo, move o ponteiro de novo
+            //se o novo literal vigiado for satisfeito pelo modelo, para de vigiar a cláusula
+            let mut sat_or_unsat = self.satisfied_or_falsified(&status, model);
+            while let Some(false) = &sat_or_unsat {
+                status = self.next(ind);
+                sat_or_unsat = self.satisfied_or_falsified(&status, model);
+            }
+
+            match &status{
+                &Watcher::Unit(to_prop) => self.status = ClauseStates::Unit(to_prop),
+                &Watcher::NewWatched(new_lit) => {
+                    match sat_or_unsat{
+                        Some(true) => self.status = ClauseStates::Satisfied(new_lit),
+                        Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
+                        None => self.status = ClauseStates::Unresolved,
+                    }
+                }
+                Watcher::Conflict => panic!("Should be dead"),
+            }
+            status
         }
-        status
     }
 
     //Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
@@ -321,6 +346,7 @@ pub struct Cdcl {
     conflicting: Option<Clause>,   // cláusula conflitante
     occur_lists: OccurLists,       //lista de ocorrências
     model: Vec<Option<bool>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
+    debug_decisions: Vec<i64>,
 }
 
 impl Cdcl {
@@ -335,6 +361,10 @@ impl Cdcl {
             conflicting: None,
             occur_lists: OccurLists::new(0),
             model: vec![None; atoms + 1], //aloco 1 espaço a mais para garantir indexação em base 1
+            debug_decisions: vec![
+                13, -279, -298, 192, 228, -212, -117, -154, -6, 250, 281, 93, 215, 53, -180, -189,
+                -104, -106, -217, 224, -221, -216,
+            ],
         }
     }
 
@@ -501,8 +531,11 @@ impl Cdcl {
     ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model = mem::take(&mut self.model);
+        print_model(&model);
+        //self.print_occur();
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
         let trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
+        println!("trivial_or_decided: {:?}", &trivial_or_decided);
         let mut propagate_arr: VecDeque<i64> = trivial_or_decided.unwrap_or_default();
         loop {
             match propagate_arr.pop_front() {
@@ -514,24 +547,33 @@ impl Cdcl {
                     //self.extend_partial_model(current, decision);
                     //let mut update_model: Vec<i64> = vec![];
                     let clauses_to_watch: Vec<usize> = occur_lists.take(-current);
+                    println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
                     for &c_ind in clauses_to_watch.iter() {
+                        println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                         match self.clauses_list[c_ind].watch(-current, &model) {
                             // no unit found
                             NewWatched(new_watched) => {
                                 //self.occur_lists.remove_clause_from_lit(c_ind, -current);
                                 occur_lists.add_clause_to_lit(c_ind, new_watched)
                             }
+                            //AlreadyWatched(lit) => (),
                             Unit(to_prop) => {
                                 // checa se to_prop é conflitante com o modelo
-                                if model_disagrees(&model, to_prop) {
-                                    self.conflicting = Some(self.clauses_list[c_ind].clone());
-                                    self.model = model;
-                                    occur_lists.give_to(clauses_to_watch, -current);
-                                    return true;
+                                match model_opinion(&model, to_prop) {
+                                    Some(false) => {
+                                        //probably dead code
+                                        self.conflicting = Some(self.clauses_list[c_ind].clone());
+                                        self.model = model;
+                                        occur_lists.give_to(clauses_to_watch, -current);
+                                        return true;
+                                    }
+                                    Some(true) => (),
+                                    None => {
+                                        self.unassigned.remove(&(to_prop.abs() as usize));
+                                        propagate_arr.push_back(to_prop);
+                                        model_insert(&mut model, to_prop);
+                                    }
                                 }
-                                self.unassigned.remove(&(to_prop.abs() as usize));
-                                propagate_arr.push_back(to_prop);
-                                model_insert(&mut model, to_prop);
                             }
                             Conflict => {
                                 /*self.conflicting = Some(self.clauses_list[c_ind].clone());
@@ -570,11 +612,33 @@ impl Cdcl {
         if let Some(&atom) = at {
             self.unassigned.remove(&atom);
             if polarity {
+                println!("decided p{atom}");
                 self.model_insert(atom as i64);
                 Some(atom as i64)
             } else {
+                println!("decided ¬p{atom}");
                 self.model_insert(-(atom as i64));
                 Some(-(atom as i64))
+            }
+        } else {
+            None
+        }
+    }
+
+    fn debug_decide(&mut self) -> Option<i64> {
+        let mut rng = rand::thread_rng();
+        let at: Option<i64> = self.debug_decisions.pop();
+        let polarity: bool = rng.gen();
+        if let Some(atom) = at {
+            self.unassigned.remove(&(atom.unsigned_abs() as usize));
+            if polarity {
+                println!("decided p{atom}");
+                self.model_insert(atom);
+                Some(atom)
+            } else {
+                println!("decided ¬p{atom}");
+                self.model_insert(-atom);
+                Some(-atom)
             }
         } else {
             None
@@ -614,7 +678,15 @@ impl Cdcl {
     }
 
     pub fn yield_model(&self) -> CdclResult {
-        CdclResult::SAT(self.model.iter().skip(1).map(|k| k.unwrap()).collect())
+        println!("Model to yield:");
+        print_model(&self.model);
+        CdclResult::SAT(
+            self.model
+                .iter()
+                .skip(1)
+                .map(|k| k.unwrap_or(false))
+                .collect(),
+        )
     }
 }
 
