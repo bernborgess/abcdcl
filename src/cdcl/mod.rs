@@ -335,7 +335,13 @@ impl Cdcl {
         vec![]
     }*/
 
+    /// Returns what decision level needs to be decremented
     fn analyze_conflict(&self) {
+        if self.conflicting.is_none() {
+            panic!("Conflict was not defined!");
+        }
+        // Set the new decision level
+        // Backtracks the model
         eprintln!("TODO: analyze_conflict");
     }
 
