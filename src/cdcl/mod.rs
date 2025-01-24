@@ -1,13 +1,15 @@
-// use indexmap::IndexSet;
-use rand::seq::IteratorRandom;
-use rand::Rng;
-use std::cmp::{max, Ordering};
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::fmt;
+use clause::{Clause, Watcher::*};
+use occurlist::OccurLists;
+use rand::{seq::IteratorRandom, Rng};
+use std::cmp::Ordering;
+use std::collections::{HashSet, VecDeque};
 use std::mem;
+use utils::{get_sign, print_model};
 use CdclResult::*;
-use Watcher::*;
+
+pub mod clause;
+pub mod occurlist;
+pub mod utils;
 
 // TODO: Change cnf data structure
 pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
@@ -28,159 +30,10 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
         }
         //restart_if_applicable();
         //remove_lemmas_if_applicable();
-        match solver.debug_decide() {
+        match solver.decide() {
             None => return solver.yield_model(),
             Some(a) => trivial_or_decided = Some(VecDeque::from(vec![a])),
         }
-    }
-}
-
-/*pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
-    // eprintln!("TODO: cdcl run {:?}", cnf);
-    let mut solver: Cdcl = Cdcl::new(lits);
-    let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
-    eprintln!("trivial_or_decided: {:?}", &trivial_or_decided);
-    if solver.clauses_list.is_empty() {
-        return solver.yield_model();
-    }
-    solver.print_clauses();
-    solver.build_occur_lists();
-    solver.propagate_gives_conflict(&mut trivial_or_decided);
-    UNSAT
-}*/
-
-fn get_sign(lit: i64) -> bool {
-    match lit.cmp(&0) {
-        Ordering::Greater => true,
-        Ordering::Less => false,
-        Ordering::Equal => panic!("0 is not a literal"),
-    }
-}
-
-//Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
-//ela checa se há contradição ou se um literal inválido está sendo adicionado
-fn model_insert(model: &mut [Option<bool>], lit: i64) -> bool {
-    let atom = lit.unsigned_abs() as usize;
-    match model[atom] {
-        Some(b) => {
-            if get_sign(lit) {
-                b
-            } else {
-                !b
-            }
-        }
-        None => {
-            model[atom] = Some(get_sign(lit));
-            true
-        }
-    }
-}
-
-/*fn model_disagrees(model: &[Option<bool>], lit: i64) -> bool {
-    match model[lit.unsigned_abs() as usize] {
-        Some(b) => b != (lit > 0),
-        None => false,
-    }
-}*/
-
-//Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
-fn model_opinion(model: &[Option<bool>], lit: i64) -> Option<bool> {
-    match model[lit.unsigned_abs() as usize] {
-        Some(b) => Some(b == (lit > 0)),
-        None => None,
-    }
-}
-
-fn print_model(model: &[Option<bool>]) {
-    print!("current model: ");
-    for (i, m) in model.iter().enumerate().skip(1) {
-        match m {
-            Some(true) => print!("{i},"),
-            Some(false) => print!("-{i},"),
-            None => (),
-        }
-    }
-    println!();
-}
-
-enum Watcher {
-    Unit(i64),
-    //AlreadyWatched(i64),
-    NewWatched(i64),
-    Conflict,
-}
-
-/*impl Watcher{
-    fn unwrap(&self)->i64{
-        match self{
-            &Unit(v) => v,
-            &WatchedFromTo(from,to) => (from,to),
-            Conflict => panic!("Unwrap on conflict")
-        }
-    }
-}*/
-
-#[derive(Debug, Default)]
-struct OccurLists {
-    positive: Vec<Vec<usize>>, // positive[k] contém os índices das cláusulas que têm o literal +k vigiado
-    negative: Vec<Vec<usize>>, // negative[k] contém os índices das cláusulas que têm o literal -k vigiado
-}
-
-impl OccurLists {
-    fn new(n: usize) -> OccurLists {
-        OccurLists {
-            positive: vec![Vec::new(); n + 1], //aloco 1 espaço a mais para garantir indexação em base 1
-            negative: vec![Vec::new(); n + 1],
-        }
-    }
-
-    fn take(&mut self, lit: i64) -> Vec<usize> {
-        if lit < 0 {
-            mem::take(&mut self.negative[lit.unsigned_abs() as usize])
-        } else {
-            mem::take(&mut self.positive[lit.unsigned_abs() as usize])
-        }
-    }
-
-    fn give_to(&mut self, clause_lists: Vec<usize>, lit: i64) {
-        if lit < 0 {
-            self.negative[lit.unsigned_abs() as usize] = clause_lists;
-        } else {
-            self.positive[lit.unsigned_abs() as usize] = clause_lists;
-        }
-    }
-
-    fn get(&self, lit: i64) -> &Vec<usize> {
-        if lit < 0 {
-            &self.negative[lit.unsigned_abs() as usize]
-        } else {
-            &self.positive[lit.unsigned_abs() as usize]
-        }
-    }
-
-    fn get_mut(&mut self, lit: i64) -> &mut Vec<usize> {
-        if lit < 0 {
-            &mut self.negative[lit.unsigned_abs() as usize]
-        } else {
-            &mut self.positive[lit.unsigned_abs() as usize]
-        }
-    }
-
-    fn add_clause_to_lit(&mut self, clause: usize, lit: i64) {
-        self.get_mut(lit).push(clause);
-    }
-
-    fn remove_clauses_from_lit(&mut self, clauses: &Vec<usize>, lit: i64) {
-        let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
-        *lit_occur_list = lit_occur_list
-            .drain(..)
-            .filter(|x| !clauses.contains(x))
-            .collect();
-    }
-
-    fn remove_clause_from_lit(&mut self, clause: usize, lit: i64) {
-        let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
-        *lit_occur_list = lit_occur_list.drain(..).filter(|&x| clause != x).collect();
     }
 }
 
@@ -198,130 +51,6 @@ struct InnerAssignment {
     decision_level: usize,
     antecedent: Option<usize>,
     decision: bool, //true if assignment comes from a decide
-}
-
-#[derive(Clone)]
-pub struct Clause {
-    data: Vec<i64>,
-    watch_ptr: [usize; 2],
-    status: ClauseStates,
-}
-
-impl fmt::Debug for Clause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Define how you want your struct to be printed
-        for (i, lit) in self.data.iter().enumerate() {
-            if (self.watch_ptr[0] == i) || (self.watch_ptr[1] == i) {
-                write!(f, "•");
-            }
-            write!(f, "{:?},", lit);
-        }
-        writeln!(f, "");
-        Ok(())
-    }
-}
-
-impl Clause {
-    pub fn new(arr: Vec<Vec<i64>>) -> Vec<Clause> {
-        arr.into_iter()
-            .map(|v| Clause {
-                data: v,
-                watch_ptr: [0, 1],
-                status: ClauseStates::Unresolved,
-            })
-            .collect()
-    }
-
-    fn watch(&mut self, lit: i64, model: &[Option<bool>]) -> Watcher {
-        if let ClauseStates::Satisfied(lit) = self.status {
-            Watcher::NewWatched(lit)
-        } else {
-            if self.data.len() == 1 {
-                return Unit(lit);
-            }
-            let ind: usize = if self.point(0) == lit {
-                //seleciona o ponteiro que vai ser movido
-                0
-            } else if self.point(1) == lit {
-                1
-            } else {
-                panic!("There's only 2 pointers")
-            };
-
-            //move o ponteiro
-            let mut status: Watcher = self.next(ind);
-
-            //se não encontrar uma cláusula unitária, checa o novo literal vigiado
-            //se o novo literal vigiado for falseado pelo modelo, move o ponteiro de novo
-            //se o novo literal vigiado for satisfeito pelo modelo, para de vigiar a cláusula
-            let mut sat_or_unsat = self.satisfied_or_falsified(&status, model);
-            while let Some(false) = &sat_or_unsat {
-                status = self.next(ind);
-                sat_or_unsat = self.satisfied_or_falsified(&status, model);
-            }
-
-            match &status{
-                &Watcher::Unit(to_prop) => self.status = ClauseStates::Unit(to_prop),
-                &Watcher::NewWatched(new_lit) => {
-                    match sat_or_unsat{
-                        Some(true) => self.status = ClauseStates::Satisfied(new_lit),
-                        Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
-                        None => self.status = ClauseStates::Unresolved,
-                    }
-                }
-                Watcher::Conflict => panic!("Should be dead"),
-            }
-            status
-        }
-    }
-
-    //Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
-    fn satisfied_or_falsified(&self, status: &Watcher, model: &[Option<bool>]) -> Option<bool> {
-        match status {
-            Watcher::Unit(_) => None,
-            Watcher::Conflict => None,
-            &Watcher::NewWatched(to) => {
-                let polarity = get_sign(to);
-                model[to.unsigned_abs() as usize].map(|assignment| assignment == polarity)
-            }
-        }
-    }
-
-    //retorna o valor apontado pelo ponteiro i
-    fn point(&self, i: usize) -> i64 {
-        self.data[self.watch_ptr[i]]
-    }
-
-    fn next(&mut self, i: usize) -> Watcher {
-        // Se o outro ponteiro já tiver explodido, retorna conflito
-        if self.watch_ptr[(i + 1) % 2] >= self.data.len() {
-            return Conflict; //Isso deve ser código morto, mas vou deixar essa linha pra detectar bug
-        }
-        let max_pointer = max(self.watch_ptr[0], self.watch_ptr[1]);
-        // if self.watch_ptr[0] < self.watch_ptr[1] {
-        //     self.watch_ptr[1]
-        // } else {
-        //     self.watch_ptr[0]
-        // };
-        //nova posição para onde o ponteiro i vai apontar
-        self.watch_ptr[i] = max_pointer + 1;
-
-        // caso ponteiro ultrapasse o array, retorna o literal que sobrou no outro ponteiro para ser propagado
-        if self.watch_ptr[i] == self.data.len() {
-            self.status = ClauseStates::Unit(self.point((i + 1) % 2));
-            Unit(self.point((i + 1) % 2))
-        } else {
-            NewWatched(self.point(i)) // retorna o novo literal vigiado
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-enum ClauseStates {
-    Satisfied(i64),
-    Falsified(i64),
-    Unit(i64),
-    Unresolved,
 }
 
 #[derive(Debug, PartialEq)]
@@ -487,7 +216,7 @@ impl Cdcl {
             if !self.model_insert(lit) {
                 return None; //Unsat case
             }
-            self.unassigned.remove(&(lit.abs() as usize));
+            self.unassigned.remove(&(lit.unsigned_abs() as usize));
             let occurs = full_occur_lists.get(lit);
             for &clause_ind in occurs.iter() {
                 clauses_to_remove.insert(clause_ind);
@@ -559,7 +288,7 @@ impl Cdcl {
                             //AlreadyWatched(lit) => (),
                             Unit(to_prop) => {
                                 // checa se to_prop é conflitante com o modelo
-                                match model_opinion(&model, to_prop) {
+                                match Cdcl::model_opinion(&model, to_prop) {
                                     Some(false) => {
                                         //probably dead code
                                         self.conflicting = Some(self.clauses_list[c_ind].clone());
@@ -569,9 +298,9 @@ impl Cdcl {
                                     }
                                     Some(true) => (),
                                     None => {
-                                        self.unassigned.remove(&(to_prop.abs() as usize));
+                                        self.unassigned.remove(&(to_prop.unsigned_abs() as usize));
                                         propagate_arr.push_back(to_prop);
-                                        model_insert(&mut model, to_prop);
+                                        Cdcl::model_insert_static(&mut model, to_prop);
                                     }
                                 }
                             }
@@ -586,6 +315,10 @@ impl Cdcl {
                 }
             };
         }
+    }
+
+    fn model_opinion(model: &[Option<bool>], lit: i64) -> Option<bool> {
+        model[lit.unsigned_abs() as usize].map(|b| b == (lit > 0))
     }
 
     /*fn format(&self) -> Vec<Assignment> {
@@ -688,13 +421,30 @@ impl Cdcl {
                 .collect(),
         )
     }
+
+    //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
+    //ela checa se há contradição ou se um literal inválido está sendo adicionado
+    fn model_insert_static(model: &mut [Option<bool>], lit: i64) -> bool {
+        let atom = lit.unsigned_abs() as usize;
+        match model[atom] {
+            Some(b) => {
+                if get_sign(lit) {
+                    b
+                } else {
+                    !b
+                }
+            }
+            None => {
+                model[atom] = Some(get_sign(lit));
+                true
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use Assignment::*;
-    use CdclResult::*;
 
     #[test]
     fn empty_cnf_is_unsat() {
