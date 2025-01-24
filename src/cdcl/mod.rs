@@ -579,7 +579,7 @@ mod tests {
             vec![-5, 4, 2],
         ];
 
-        let result = run_cdcl(cnf, 2);
+        let result = run_cdcl_debug(cnf, 2);
         match result {
             UNSAT => panic!("Expected SAT"),
             SAT(m) => println!("TODO"),

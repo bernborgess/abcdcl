@@ -30,7 +30,7 @@
                     "--no-run",
                     "--lib",
                     "--package=abcdclt",
-                    "empty_cnf_is_unsat"
+                    "backtrack_small_case"
                 ],
                 "filter": {
                     "name": "abcdclt",
