@@ -1,3 +1,4 @@
+use assignment::Assignment;
 use clause::{Clause, Watcher::*};
 use occurlist::OccurLists;
 use rand::{seq::IteratorRandom, Rng};
@@ -7,6 +8,7 @@ use std::{env, mem};
 use utils::{get_sign, print_model};
 use CdclResult::*;
 
+pub mod assignment;
 pub mod clause;
 pub mod occurlist;
 pub mod utils;
@@ -51,7 +53,8 @@ pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
             if solver.decision_level == 0 {
                 return UNSAT;
             } else {
-                solver.analyze_conflict();
+                let dl_target = solver.analyze_conflict();
+                solver.backjump(dl_target);
             }
         }
         //restart_if_applicable();
@@ -94,13 +97,13 @@ pub struct Cdcl {
     //remove pub
     //partial_model: Vec<InnerAssignment>, // Vetor usado pelas regras,
     //decision_points: Vec<usize>, // Se o valor k está nesse vetor, quer dizer que partial_model[k] está em um decision level acima de partial_model[k-1]
-    pub clauses_list: Vec<Clause>, // array de cláusulas
-    unassigned: HashSet<usize>,    // conjunto de todos os átomos sem valor atribuído
-    number_of_atoms: usize,        // total de átomos
-    pub decision_level: usize,     // maior nível de decisão do estado
-    conflicting: Option<Clause>,   // cláusula conflitante
-    occur_lists: OccurLists,       //lista de ocorrências
-    model: Vec<Option<bool>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
+    pub clauses_list: Vec<Clause>,  // array de cláusulas
+    unassigned: HashSet<usize>,     // conjunto de todos os átomos sem valor atribuído
+    number_of_atoms: usize,         // total de átomos
+    pub decision_level: usize,      // maior nível de decisão do estado
+    conflicting: Option<Clause>,    // cláusula conflitante
+    occur_lists: OccurLists,        //lista de ocorrências
+    model: Vec<Option<Assignment>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
     debug_decisions: Vec<i64>,
 }
 
@@ -122,9 +125,9 @@ impl Cdcl {
 
     fn conflict_model(&self, lit: i64) -> bool {
         let ind: usize = lit.unsigned_abs() as usize;
-        match self.model[ind] {
+        match &self.model[ind] {
             None => false,
-            Some(assignment) => assignment != get_sign(lit),
+            Some(assignment) => assignment.polarity != get_sign(lit),
         }
     }
 
@@ -236,7 +239,7 @@ impl Cdcl {
         mut cnf: Vec<Vec<i64>>,
     ) -> Option<Vec<Vec<i64>>> {
         for &lit in decided.iter() {
-            if !self.model_insert(lit) {
+            if !self.model_insert(lit, None) {
                 return None; //Unsat case
             }
             self.unassigned.remove(&(lit.unsigned_abs() as usize));
@@ -254,35 +257,13 @@ impl Cdcl {
         Some(cnf)
     }
 
-    //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
-    //ela checa se há contradição ou se um literal inválido está sendo adicionado
-    fn model_insert(&mut self, lit: i64) -> bool {
-        let atom = lit.unsigned_abs() as usize;
-        match &self.model[atom] {
-            Some(true) => {
-                if !get_sign(lit) {
-                    return false;
-                }
-            }
-            Some(false) => {
-                if get_sign(lit) {
-                    return false;
-                }
-            }
-            None => {
-                self.model[atom] = Some(get_sign(lit));
-            }
-        }
-        true
-    }
-
     //TODO: Test
     pub fn propagate_gives_conflict(
         &mut self,
         trivial_or_decided_ref: &mut Option<VecDeque<i64>>,
     ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
-        let mut model = mem::take(&mut self.model);
+        let mut model: Vec<Option<Assignment>> = mem::take(&mut self.model);
         //print_model(&model);
         //self.f();
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
@@ -417,20 +398,6 @@ impl Cdcl {
         }
     }
 
-    /*pub fn print_model(&self){
-        let mut s = "".to_string();
-        for m in self.partial_model.iter() {
-            if m.decision {
-                s += "• ";
-            }
-            if m.lit < 0 {
-                s += "¬";
-            }
-            s += &format!("p{:?} ", m.lit.unsigned_abs());
-        }
-        eprintln!("{:?}",s);
-    }*/
-
     pub fn print_clauses(&self) {
         println!("Clauses");
         for (i, c) in self.clauses_list.iter().enumerate() {
@@ -441,32 +408,61 @@ impl Cdcl {
     pub fn yield_model(&self) -> CdclResult {
         println!("Model to yield:");
         print_model(&self.model);
+        let vanilla_assignment = Assignment {
+            polarity: false,
+            antecedent: None,
+            dl: 0,
+        };
         CdclResult::SAT(
             self.model
                 .iter()
                 .skip(1)
-                .map(|k| k.unwrap_or(false))
+                .map(|k| k.unwrap_or(vanilla_assignment).polarity)
                 .collect(),
         )
     }
 
     //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
     //ela checa se há contradição ou se um literal inválido está sendo adicionado
-    fn model_insert_static(model: &mut [Option<bool>], lit: i64) -> bool {
+    fn model_insert(&mut self, lit: i64, antecedent: Option<usize>) -> bool {
         let atom = lit.unsigned_abs() as usize;
-        match model[atom] {
-            Some(b) => {
-                if get_sign(lit) {
-                    b
-                } else {
-                    !b
+        match &self.model[atom] {
+            Some(asgnmt) => {
+                if asgnmt.polarity != get_sign(lit) {
+                    return false;
                 }
             }
             None => {
-                model[atom] = Some(get_sign(lit));
-                true
+                self.model[atom] = Some(Assignment::new(
+                    get_sign(lit),
+                    self.decision_level,
+                    antecedent,
+                ));
             }
         }
+        true
+    }
+
+    //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
+    //ela checa se há contradição ou se um literal inválido está sendo adicionado
+    fn model_insert_static(
+        model: &mut [Option<Assignment>],
+        lit: i64,
+        antecedent: Option<usize>,
+        decision_level: usize,
+    ) -> bool {
+        let atom = lit.unsigned_abs() as usize;
+        match &model[atom] {
+            Some(asgnmt) => {
+                if asgnmt.polarity != get_sign(lit) {
+                    return false;
+                }
+            }
+            None => {
+                model[atom] = Some(Assignment::new(get_sign(lit), decision_level, antecedent));
+            }
+        }
+        true
     }
 }
 
