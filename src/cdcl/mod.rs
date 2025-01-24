@@ -514,7 +514,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_cnf_is_unsat() {
+    fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0);
         assert_eq!(result, SAT(vec![]));
     }
