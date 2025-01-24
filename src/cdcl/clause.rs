@@ -9,7 +9,7 @@ pub enum Watcher {
 
 use Watcher::*;
 
-use super::utils::get_sign;
+use super::{assignment::Assignment, utils::get_sign};
 
 /*impl Watcher{
     fn unwrap(&self)->i64{
@@ -53,7 +53,7 @@ impl Clause {
             .collect()
     }
 
-    pub fn watch(&mut self, lit: i64, model: &[Option<bool>]) -> Watcher {
+    pub fn watch(&mut self, lit: i64, model: &[Option<Assignment>]) -> Watcher {
         if let ClauseStates::Satisfied(lit) = self.status {
             Watcher::NewWatched(lit)
         } else {
@@ -97,13 +97,17 @@ impl Clause {
     }
 
     //Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
-    fn satisfied_or_falsified(&self, status: &Watcher, model: &[Option<bool>]) -> Option<bool> {
+    fn satisfied_or_falsified(
+        &self,
+        status: &Watcher,
+        model: &[Option<Assignment>],
+    ) -> Option<bool> {
         match status {
             Watcher::Unit(_) => None,
             Watcher::Conflict => None,
             &Watcher::NewWatched(to) => {
                 let polarity = get_sign(to);
-                model[to.unsigned_abs() as usize].map(|assignment| assignment == polarity)
+                model[to.unsigned_abs() as usize].map(|assignment| assignment.polarity == polarity)
             }
         }
     }

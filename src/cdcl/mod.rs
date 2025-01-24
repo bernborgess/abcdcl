@@ -54,7 +54,7 @@ pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
                 return UNSAT;
             } else {
                 let dl_target = solver.analyze_conflict();
-                solver.backjump(dl_target);
+                //solver.backjump(dl_target);
             }
         }
         //restart_if_applicable();
@@ -304,7 +304,12 @@ impl Cdcl {
                                     None => {
                                         self.unassigned.remove(&(to_prop.unsigned_abs() as usize));
                                         propagate_arr.push_back(to_prop);
-                                        Cdcl::model_insert_static(&mut model, to_prop);
+                                        Cdcl::model_insert_static(
+                                            &mut model,
+                                            to_prop,
+                                            Some(c_ind),
+                                            self.decision_level,
+                                        );
                                     }
                                 }
                             }
@@ -321,8 +326,8 @@ impl Cdcl {
         }
     }
 
-    fn model_opinion(model: &[Option<bool>], lit: i64) -> Option<bool> {
-        model[lit.unsigned_abs() as usize].map(|b| b == (lit > 0))
+    fn model_opinion(model: &[Option<Assignment>], lit: i64) -> Option<bool> {
+        model[lit.unsigned_abs() as usize].map(|b| b.polarity == (lit > 0))
     }
 
     /*fn format(&self) -> Vec<Assignment> {
@@ -346,15 +351,16 @@ impl Cdcl {
         let mut rng = rand::thread_rng();
         let at: Option<&usize> = self.unassigned.iter().choose(&mut rng);
         let polarity: bool = rng.gen();
+        self.decision_level += 1;
         if let Some(&atom) = at {
             self.unassigned.remove(&atom);
             if polarity {
                 println!("decided p{atom}");
-                self.model_insert(atom as i64);
+                self.model_insert(atom as i64, None);
                 Some(atom as i64)
             } else {
                 println!("decided ¬p{atom}");
-                self.model_insert(-(atom as i64));
+                self.model_insert(-(atom as i64), None);
                 Some(-(atom as i64))
             }
         } else {
@@ -364,16 +370,17 @@ impl Cdcl {
 
     fn debug_decide(&mut self) -> Option<i64> {
         let at: Option<i64> = self.debug_decisions.pop();
+        self.decision_level += 1;
         if let Some(atom) = at {
             let polarity: bool = get_sign(atom);
             self.unassigned.remove(&(atom.unsigned_abs() as usize));
             if polarity {
                 //println!("decided p{atom}");
-                self.model_insert(atom);
+                self.model_insert(atom, None);
                 Some(atom)
             } else {
                 //println!("decided ¬p{atom}");
-                self.model_insert(atom);
+                self.model_insert(atom, None);
                 Some(atom)
             }
         } else {
