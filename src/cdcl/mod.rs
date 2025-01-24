@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn empty_cnf_is_unsat() {
         let result = run_cdcl(vec![], 0);
-        assert_eq!(result, UNSAT);
+        assert_eq!(result, SAT(vec![]));
     }
 
     #[test]
@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     fn two_cnf_is_unsat() {
-        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2], vec![1, -2]], 2);
+        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]], 2);
         match result {
             UNSAT => (),
             SAT(_) => panic!("Expected UNSAT"),

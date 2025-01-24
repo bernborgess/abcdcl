@@ -29,7 +29,8 @@
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=abcdclt"
+                    "--package=abcdclt",
+                    "empty_cnf_is_unsat"
                 ],
                 "filter": {
                     "name": "abcdclt",
