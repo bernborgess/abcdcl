@@ -24,10 +24,16 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     solver.build_occur_lists();
     loop {
         while solver.propagate_gives_conflict(&mut trivial_or_decided) {
-            if solver.decision_level == 0 {
-                return UNSAT;
-            } else {
-                let b = solver.analyze_conflict();
+            match solver.analyze_conflict() {
+                None => return UNSAT,
+                Some((b, learnt_clause)) => {
+                    println!("VAI SE FODER!!!");
+                    // Add learnt clause to clause list
+                    // Apply backtrack of dl b
+                    // Set new dl to b
+                    // Add negation of the unset literal in learnt_clause to the model
+                    // Add is to propagate too
+                }
             }
         }
         //restart_if_applicable();
