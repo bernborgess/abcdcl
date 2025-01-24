@@ -12,7 +12,7 @@ pub fn read_cnf() -> (Vec<Vec<i64>>, usize) {
         Instance::Cnf { num_vars, clauses } => (num_vars, clauses),
         Instance::Sat { .. } => panic!("Received (valid) SAT input, not CNF"),
     };
-    println!(
+    eprintln!(
         "Working with {num_vars} variables and {} clauses.",
         clauses.len()
     );
@@ -29,7 +29,7 @@ pub fn read_cnf() -> (Vec<Vec<i64>>, usize) {
             // add this lit to the clause at the right idx
             clause_vec.push(if b { val } else { -val });
         }
-        println!();
+        eprintln!();
         cnf_vec.push(clause_vec);
     }
     (cnf_vec, num_vars.try_into().unwrap())

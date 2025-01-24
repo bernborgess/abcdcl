@@ -1,7 +1,7 @@
 // use indexmap::IndexSet;
 use rand::seq::IteratorRandom;
 use rand::Rng;
-use std::cmp::Ordering;
+use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fmt;
@@ -11,11 +11,11 @@ use Watcher::*;
 
 // TODO: Change cnf data structure
 pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
-    println!("TODO: cdcl run {:?}", cnf);
+    // eprintln!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
     let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
     if solver.clauses_list.len() == 0 {
-        return solver.SAT();
+        return solver.yield_model();
     }
     solver.build_occur_lists();
     loop {
@@ -29,7 +29,7 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
         //restart_if_applicable();
         //remove_lemmas_if_applicable();
         match solver.decide() {
-            None => return solver.SAT(),
+            None => return solver.yield_model(),
             Some(a) => trivial_or_decided = Some(VecDeque::from(vec![a])),
         }
     }
@@ -251,11 +251,12 @@ impl Clause {
         if self.watch_ptr[(i + 1) % 2] >= self.data.len() {
             return Conflict; //Isso deve ser código morto, mas vou deixar essa linha pra detectar bug
         }
-        let max_pointer = if self.watch_ptr[0] < self.watch_ptr[1] {
-            self.watch_ptr[1]
-        } else {
-            self.watch_ptr[0]
-        };
+        let max_pointer = max(self.watch_ptr[0], self.watch_ptr[1]);
+        // if self.watch_ptr[0] < self.watch_ptr[1] {
+        //     self.watch_ptr[1]
+        // } else {
+        //     self.watch_ptr[0]
+        // };
         //nova posição para onde o ponteiro i vai apontar
         self.watch_ptr[i] = max_pointer + 1;
 
@@ -333,8 +334,8 @@ impl Cdcl {
                                                                                        //let mut unary_clause_assignments: Vec<i64> = vec![]; // vector pois suponho que não existem 2 cláusulas unitárias iguais na entrada
         let mut full_occur_lists = OccurLists::new(self.number_of_atoms + 1); // 1 campo extra para indexar em base 1
         for (clause_ind, clause) in cnf.iter_mut().enumerate() {
-            //println!("Clause {:?}: {:?}", clause_ind, &clause);
-            //println!("{}",3);
+            //eprintln!("Clause {:?}: {:?}", clause_ind, &clause);
+            //eprintln!("{}",3);
             //remove_duplicates(&mut clause.data); // remove cláusulas repetidas
             //let mut clause_is_tautology = false;
             //let mut seen_in_clause: HashSet<i64> = HashSet::new();
@@ -345,9 +346,9 @@ impl Cdcl {
                 }
                 decided.push_back(clause[0]);
                 clauses_to_remove.insert(clause_ind);
-                //println!("By reason of length 1: ");
-                //println!("decided: {:?}",&decided);
-                //println!("clauses to remove: {:?}", &clauses_to_remove);
+                //eprintln!("By reason of length 1: ");
+                //eprintln!("decided: {:?}",&decided);
+                //eprintln!("clauses to remove: {:?}", &clauses_to_remove);
             }
             /*for lit in clause.iter(){ // procura cláusulas triviais
                 if seen_in_clause.contains(&(-lit)){
@@ -478,7 +479,7 @@ impl Cdcl {
     ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model = mem::take(&mut self.model);
-        let mut occur_lists = &mut self.occur_lists;
+        let mut occur_lists: &mut OccurLists = &mut self.occur_lists;
         let mut trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
         let mut propagate_arr: VecDeque<i64> = match trivial_or_decided {
             Some(q) => q,
@@ -495,7 +496,7 @@ impl Cdcl {
                     //let mut update_model: Vec<i64> = vec![];
                     let clauses_to_watch: Vec<usize> = occur_lists.take(-current);
                     for &c_ind in clauses_to_watch.iter() {
-                        match self.clauses_list[c_ind].watch(-current, &self.model) {
+                        match self.clauses_list[c_ind].watch(-current, &model) {
                             // no unit found
                             NewWatched(new_watched) => {
                                 //self.occur_lists.remove_clause_from_lit(c_ind, -current);
@@ -527,20 +528,20 @@ impl Cdcl {
     }
 
     /*fn format(&self) -> Vec<Assignment> {
-        println!("TODO: format");
+        eprintln!("TODO: format");
         vec![]
     }*/
 
     fn analyze_conflict(&self) {
-        println!("TODO: analyze_conflict");
+        eprintln!("TODO: analyze_conflict");
     }
 
     fn restart_if_applicable(&self) {
-        println!("TODO: restart_if_applicable");
+        eprintln!("TODO: restart_if_applicable");
     }
 
     fn remove_lemmas_if_applicable(&self) {
-        println!("TODO: remove_lemmas_if_applicable");
+        eprintln!("TODO: remove_lemmas_if_applicable");
     }
 
     fn decide(&self) -> Option<i64> {
@@ -561,11 +562,11 @@ impl Cdcl {
     pub fn print_occur(&self) {
         for (i, pos) in self.occur_lists.positive.iter().enumerate() {
             let v: Vec<usize> = pos.iter().map(|x| x + 1).collect();
-            println!("p{:?}: {:?}", i + 1, v);
+            eprintln!("p{:?}: {:?}", i + 1, v);
         }
         for (i, neg) in self.occur_lists.negative.iter().enumerate() {
             let v: Vec<usize> = neg.iter().map(|x| x + 1).collect();
-            println!("¬p{:?}: {:?}", i + 1, v);
+            eprintln!("¬p{:?}: {:?}", i + 1, v);
         }
     }
 
@@ -580,12 +581,16 @@ impl Cdcl {
             }
             s += &format!("p{:?} ", m.lit.unsigned_abs());
         }
-        println!("{:?}",s);
+        eprintln!("{:?}",s);
     }*/
 
     pub fn print_prop(&self, prop: &VecDeque<i64>) {
         let v: Vec<_> = prop.iter().map(|x| x).collect();
-        println!("to propagate: {:?}", v)
+        eprintln!("to propagate: {:?}", v)
+    }
+
+    pub fn yield_model(&self) -> CdclResult {
+        CdclResult::SAT(self.model.iter().map(|k| k.unwrap()).collect())
     }
 }
 
