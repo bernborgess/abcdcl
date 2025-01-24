@@ -454,7 +454,8 @@ mod tests {
 
     #[test]
     fn single_cnf_is_sat() {
-        let result = run_cdcl(vec![vec![1]], 1);
+        let cnf = vec![vec![1]];
+        let result = run_cdcl(cnf, 1);
         match result {
             UNSAT => panic!("Expected SAT"),
             SAT(assign) => {
@@ -466,7 +467,8 @@ mod tests {
 
     #[test]
     fn two_cnf_is_sat() {
-        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2]], 2);
+        let cnf = vec![vec![1, 2], vec![-1, -2]];
+        let result = run_cdcl(cnf, 2);
         match result {
             UNSAT => panic!("Expected SAT"),
             SAT(assign) => {
@@ -479,7 +481,8 @@ mod tests {
 
     #[test]
     fn two_cnf_is_unsat() {
-        let result = run_cdcl(vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]], 2);
+        let cnf = vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]];
+        let result = run_cdcl(cnf, 2);
         match result {
             UNSAT => (),
             SAT(_) => panic!("Expected UNSAT"),
@@ -540,6 +543,24 @@ mod tests {
             for (j, &lit) in c.data.iter().enumerate() {
                 assert_eq!(lit, target_cnf[i][j]);
             }
+        }
+    }
+
+    #[test]
+    fn backtrack_small_case() {
+        let cnf = vec![
+            vec![1, -2, -6],
+            vec![2, -3, 5, -1, -6],
+            vec![6, 2, 4],
+            vec![1, 2],
+            vec![-6, -1, 3],
+            vec![-5, 4, 2],
+        ];
+
+        let result = run_cdcl(cnf, 2);
+        match result {
+            UNSAT => panic!("Expected SAT"),
+            SAT(m) => println!("TODO"),
         }
     }
 }
