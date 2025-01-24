@@ -43,7 +43,7 @@ pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     // eprintln!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
     let mut trivial_or_decided: Option<VecDeque<i64>> = None; //aplica a regra PURE e outros truques de pré-processamento
-    solver.clauses_list = Clause::new(cnf);
+    solver.clauses_list = Clause::new_vec(cnf);
     if solver.clauses_list.is_empty() {
         return solver.yield_model();
     }
@@ -215,7 +215,7 @@ impl Cdcl {
                 None
             }
             Some(filtered_cnf) => {
-                self.clauses_list = Clause::new(filtered_cnf);
+                self.clauses_list = Clause::new_vec(filtered_cnf);
                 Some(decided)
             }
         }
@@ -349,6 +349,22 @@ impl Cdcl {
             }
         }
         0
+    }
+
+    /// Add a new clause and prepares the watched literals
+    fn add_clause(&mut self, data: Vec<i64>) {
+        let new_clause_id = self.clauses_list.len();
+
+        // Update occurlist
+        let lit1 = data[0];
+        let lit2 = data[1];
+
+        self.occur_lists.add_clause_to_lit(new_clause_id, lit1);
+        self.occur_lists.add_clause_to_lit(new_clause_id, lit2);
+
+        // Add clause to problem
+        let learnt_clause = Clause::new(data);
+        self.clauses_list.push(learnt_clause);
     }
 
     fn literal_has_max_dl(&self, lit: i64) -> bool {

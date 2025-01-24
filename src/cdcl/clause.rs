@@ -43,14 +43,16 @@ impl fmt::Debug for Clause {
 }
 
 impl Clause {
-    pub fn new(arr: Vec<Vec<i64>>) -> Vec<Clause> {
-        arr.into_iter()
-            .map(|v| Clause {
-                data: v,
-                watch_ptr: [0, 1],
-                status: ClauseStates::Unresolved,
-            })
-            .collect()
+    pub fn new(data: Vec<i64>) -> Clause {
+        Clause {
+            data,
+            watch_ptr: [0, 1],
+            status: ClauseStates::Unresolved,
+        }
+    }
+
+    pub fn new_vec(arr: Vec<Vec<i64>>) -> Vec<Clause> {
+        arr.into_iter().map(Clause::new).collect()
     }
 
     pub fn watch(&mut self, lit: i64, model: &[Option<Assignment>]) -> Watcher {
