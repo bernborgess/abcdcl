@@ -8,8 +8,8 @@ fn main() {
     // TODO: Pass the right number of literals!
     let result = run_cdcl(cnf, lits);
     match result {
-        CdclResult::SAT(_) => println!("SAT"),
-        CdclResult::UNSAT => println!("UNSAT"),
+        CdclResult::SAT(_) => println!("\nSAT"),
+        CdclResult::UNSAT => println!("\nUNSAT"),
     }
     // eprintln!("{:?}", result);
     //run_demo()
