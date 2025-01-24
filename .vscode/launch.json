@@ -30,7 +30,7 @@
                     "--no-run",
                     "--lib",
                     "--package=abcdclt",
-                    "two_cnf_is_unsat",
+                    "check_return_level",
                 ],
                 "filter": {
                     "name": "abcdclt",

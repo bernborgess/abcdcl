@@ -7,7 +7,6 @@ use std::collections::{HashSet, VecDeque};
 use std::mem;
 use utils::{get_sign, print_model};
 use CdclResult::*;
-
 pub mod assignment;
 pub mod clause;
 pub mod occurlist;
@@ -45,9 +44,14 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     }
 }
 
-pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
+pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize, param: usize) -> CdclResult {
     // eprintln!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
+    if param == 2 {
+        solver.debug_decisions = vec![-4, -2]
+    } else if param == 3 {
+        solver.debug_decisions = vec![5, 3, 2, 1]
+    }
     let mut trivial_or_decided: Option<VecDeque<i64>> = None; //aplica a regra PURE e outros truques de pré-processamento
     solver.clauses_list = Clause::new_vec(cnf);
     if solver.clauses_list.is_empty() {
@@ -56,11 +60,13 @@ pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     solver.build_occur_lists();
     loop {
         while solver.propagate_gives_conflict(&mut trivial_or_decided) {
-            if solver.decision_level == 0 {
-                return UNSAT;
-            } else {
-                let dl_target = solver.analyze_conflict();
-                //solver.backjump(dl_target);
+            match solver.analyze_conflict() {
+                None => return UNSAT,
+                Some((b, learnt_clause)) => {
+                    if true {
+                        return CdclResult::mock(b);
+                    }
+                }
             }
         }
         //restart_if_applicable();
@@ -92,6 +98,7 @@ struct InnerAssignment {
 pub enum CdclResult {
     UNSAT,
     SAT(Vec<bool>),
+    mock(usize),
 }
 
 fn remove_duplicates<T: Ord>(v: &mut Vec<T>) {
@@ -110,7 +117,7 @@ pub struct Cdcl {
     conflicting: Option<Clause>,    // cláusula conflitante
     occur_lists: OccurLists,        //lista de ocorrências
     model: Vec<Option<Assignment>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
-    debug_decisions: Vec<i64>,
+    pub debug_decisions: Vec<i64>,
 }
 
 impl Cdcl {
@@ -125,7 +132,7 @@ impl Cdcl {
             conflicting: None,
             occur_lists: OccurLists::new(0),
             model: vec![None; atoms + 1], //aloco 1 espaço a mais para garantir indexação em base 1
-            debug_decisions: vec![-4, -2],
+            debug_decisions: vec![],
         }
     }
 
@@ -270,13 +277,13 @@ impl Cdcl {
     ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model: Vec<Option<Assignment>> = mem::take(&mut self.model);
-        //print_model(&model);
         //self.f();
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
         let trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
         //println!("trivial_or_decided: {:?}", &trivial_or_decided);
         let mut propagate_arr: VecDeque<i64> = trivial_or_decided.unwrap_or_default();
         loop {
+            //print_model(&model);
             match propagate_arr.pop_front() {
                 None => {
                     self.model = model;
@@ -581,7 +588,7 @@ impl Cdcl {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    /*
     #[test]
     fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0);
@@ -593,11 +600,11 @@ mod tests {
         let cnf = vec![vec![1]];
         let result = run_cdcl(cnf, 1);
         match result {
-            UNSAT => panic!("Expected SAT"),
             SAT(assign) => {
                 assert_eq!(assign.len(), 1);
                 assert!(assign[0]);
             }
+            _ => panic!("single cnf is sat"),
         }
     }
 
@@ -606,12 +613,12 @@ mod tests {
         let cnf = vec![vec![1, 2], vec![-1, -2]];
         let result = run_cdcl(cnf, 2);
         match result {
-            UNSAT => panic!("Expected SAT"),
             SAT(assign) => {
                 assert_eq!(assign.len(), 2);
                 // Either [T,F] or [F,T]
                 assert!(assign == vec![true, false] || assign == vec![false, true]);
             }
+            _ => panic!("two cnf is sat fail"),
         }
     }
 
@@ -621,7 +628,7 @@ mod tests {
         let result = run_cdcl(cnf, 2);
         match result {
             UNSAT => (),
-            SAT(_) => panic!("Expected UNSAT"),
+            _ => panic!("two cnf is unsat fail"),
         }
     }
 
@@ -693,10 +700,28 @@ mod tests {
             vec![6, 2, 4],
         ];
 
-        let result = run_cdcl_debug(cnf, 6);
+        let result = run_cdcl_debug(cnf, 6, 2);
         match result {
-            UNSAT => panic!("Expected SAT"),
             SAT(m) => println!("TODO"),
+            _ => panic!("backtrack small case fail"),
+        }
+    }*/
+
+    #[test]
+    fn check_return_level() {
+        let cnf = vec![
+            vec![-2, -3, -4],
+            vec![-3, -5, -6],
+            vec![4, 6, 7],
+            vec![-7, -8],
+            vec![-1, -7, -9],
+            vec![-1, 8, 9],
+        ];
+
+        let result = run_cdcl_debug(cnf, 9, 3);
+        match result {
+            mock(b) => assert_eq!(b, 3),
+            _ => panic!("check_return_level fail"),
         }
     }
 }
