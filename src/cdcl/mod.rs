@@ -35,6 +35,20 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
     }
 }
 
+/*pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
+    // eprintln!("TODO: cdcl run {:?}", cnf);
+    let mut solver: Cdcl = Cdcl::new(lits);
+    let mut trivial_or_decided: Option<VecDeque<i64>> = solver.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
+    eprintln!("trivial_or_decided: {:?}", &trivial_or_decided);
+    if solver.clauses_list.is_empty() {
+        return solver.yield_model();
+    }
+    solver.print_clauses();
+    solver.build_occur_lists();
+    solver.propagate_gives_conflict(&mut trivial_or_decided);
+    UNSAT
+}*/
+
 fn get_sign(lit: i64) -> bool {
     match lit.cmp(&0) {
         Ordering::Greater => true,
@@ -436,6 +450,7 @@ impl Cdcl {
             if !self.model_insert(lit) {
                 return None; //Unsat case
             }
+            self.unassigned.remove(&(lit.unsigned_abs() as usize));
             let occurs = full_occur_lists.get(lit);
             for &clause_ind in occurs.iter() {
                 clauses_to_remove.insert(clause_ind);
@@ -479,12 +494,9 @@ impl Cdcl {
     ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model = mem::take(&mut self.model);
-        let mut occur_lists: &mut OccurLists = &mut self.occur_lists;
-        let mut trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
-        let mut propagate_arr: VecDeque<i64> = match trivial_or_decided {
-            Some(q) => q,
-            None => VecDeque::new(),
-        };
+        let occur_lists: &mut OccurLists = &mut self.occur_lists;
+        let trivial_or_decided: Option<VecDeque<i64>> = trivial_or_decided_ref.take();
+        let mut propagate_arr: VecDeque<i64> = trivial_or_decided.unwrap_or_default();
         loop {
             match propagate_arr.pop_front() {
                 None => {
@@ -560,13 +572,13 @@ impl Cdcl {
     }
 
     pub fn print_occur(&self) {
-        for (i, pos) in self.occur_lists.positive.iter().enumerate() {
-            let v: Vec<usize> = pos.iter().map(|x| x + 1).collect();
-            eprintln!("p{:?}: {:?}", i + 1, v);
+        for (i, pos) in self.occur_lists.positive.iter().enumerate().skip(1) {
+            let v: Vec<usize> = pos.to_vec();
+            eprintln!("p{:?}: {:?}", i, v);
         }
-        for (i, neg) in self.occur_lists.negative.iter().enumerate() {
-            let v: Vec<usize> = neg.iter().map(|x| x + 1).collect();
-            eprintln!("¬p{:?}: {:?}", i + 1, v);
+        for (i, neg) in self.occur_lists.negative.iter().enumerate().skip(1) {
+            let v: Vec<usize> = neg.to_vec();
+            eprintln!("¬p{:?}: {:?}", i, v);
         }
     }
 
@@ -584,9 +596,11 @@ impl Cdcl {
         eprintln!("{:?}",s);
     }*/
 
-    pub fn print_prop(&self, prop: &VecDeque<i64>) {
-        let v: Vec<_> = prop.iter().map(|x| x).collect();
-        eprintln!("to propagate: {:?}", v)
+    pub fn print_clauses(&self) {
+        println!("Clauses");
+        for (i, c) in self.clauses_list.iter().enumerate() {
+            println!("{:?}: {:?}", i, &c.data);
+        }
     }
 
     pub fn yield_model(&self) -> CdclResult {
