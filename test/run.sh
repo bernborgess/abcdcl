@@ -32,7 +32,14 @@ for bm in "${benchmarks[@]}"; do
         for file in ${bm}*.cnf; do
             # echo "Running $file..."
             abcdclt_outfile="./out/${file}.output"
-            cargo run -q -- "$file" > "$abcdclt_outfile" 2>/dev/null
+            cargo run -q -- "$file" > "$abcdclt_outfile" 2>error.log
+            if [ $? -ne 0 ]; then
+                echo "Error: cargo run failed for $file. Stopping script."
+                echo -e "\n====================================================\n"
+                cat error.log
+                echo -e "\n====================================================\n"
+                exit 1
+            fi
             abcdclt_tail=$(tail "$abcdclt_outfile" -n 1)
 
             # minisat for comparison
@@ -46,6 +53,7 @@ for bm in "${benchmarks[@]}"; do
 
             # Increment total count
             total_count=$((total_count + 1))
+
 
             # Check that first line is the same
             if [ "$minisat_head" == "$abcdclt_tail" ]; then

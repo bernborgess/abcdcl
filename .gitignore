@@ -30,3 +30,5 @@ test/out
 
 # Statement
 *.pdf
+
+*.log
