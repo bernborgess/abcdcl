@@ -3,5 +3,6 @@
 *.tar.gz.*
 
 !ex1.cnf
+!ex2.cnf
 
 error.log
