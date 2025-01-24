@@ -1,5 +1,7 @@
 use std::mem;
 
+use super::literal::Literal;
+
 //Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
 #[derive(Debug, Default)]
 pub struct OccurLists {
@@ -15,43 +17,43 @@ impl OccurLists {
         }
     }
 
-    pub fn take(&mut self, lit: i64) -> Vec<usize> {
-        if lit < 0 {
-            mem::take(&mut self.negative[lit.unsigned_abs() as usize])
+    pub fn take(&mut self, lit: Literal) -> Vec<usize> {
+        if lit.polarity {
+            mem::take(&mut self.positive[lit.variable])
         } else {
-            mem::take(&mut self.positive[lit.unsigned_abs() as usize])
+            mem::take(&mut self.negative[lit.variable])
         }
     }
 
-    pub fn give_to(&mut self, clause_lists: Vec<usize>, lit: i64) {
-        if lit < 0 {
-            self.negative[lit.unsigned_abs() as usize] = clause_lists;
+    pub fn give_to(&mut self, clause_lists: Vec<usize>, lit: Literal) {
+        if lit.polarity {
+            self.positive[lit.variable] = clause_lists;
         } else {
-            self.positive[lit.unsigned_abs() as usize] = clause_lists;
+            self.negative[lit.variable] = clause_lists;
         }
     }
 
-    pub fn get(&self, lit: i64) -> &Vec<usize> {
-        if lit < 0 {
-            &self.negative[lit.unsigned_abs() as usize]
+    pub fn get(&self, lit: Literal) -> &Vec<usize> {
+        if lit.polarity {
+            &self.positive[lit.variable]
         } else {
-            &self.positive[lit.unsigned_abs() as usize]
+            &self.negative[lit.variable]
         }
     }
 
-    pub fn get_mut(&mut self, lit: i64) -> &mut Vec<usize> {
-        if lit < 0 {
-            &mut self.negative[lit.unsigned_abs() as usize]
+    pub fn get_mut(&mut self, lit: Literal) -> &mut Vec<usize> {
+        if lit.polarity {
+            &mut self.positive[lit.variable]
         } else {
-            &mut self.positive[lit.unsigned_abs() as usize]
+            &mut self.negative[lit.variable]
         }
     }
 
-    pub fn add_clause_to_lit(&mut self, clause: usize, lit: i64) {
-        self.get_mut(lit).push(clause);
+    pub fn add_clause_to_lit(&mut self, clause_id: usize, lit: Literal) {
+        self.get_mut(lit).push(clause_id);
     }
 
-    fn remove_clauses_from_lit(&mut self, clauses: &Vec<usize>, lit: i64) {
+    fn remove_clauses_from_lit(&mut self, clauses: &Vec<usize>, lit: Literal) {
         let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
         *lit_occur_list = lit_occur_list
             .drain(..)
@@ -59,7 +61,7 @@ impl OccurLists {
             .collect();
     }
 
-    fn remove_clause_from_lit(&mut self, clause: usize, lit: i64) {
+    fn remove_clause_from_lit(&mut self, clause: usize, lit: Literal) {
         let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
         *lit_occur_list = lit_occur_list.drain(..).filter(|&x| clause != x).collect();
     }

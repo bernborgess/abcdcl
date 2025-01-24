@@ -1,65 +1,55 @@
 use std::collections::HashSet;
 use std::fmt;
 pub enum Watcher {
-    Unit(i64),
-    //AlreadyWatched(i64),
-    NewWatched(i64),
+    Unit(Literal),
+    NewWatched(Literal),
     Conflict,
 }
 
 use Watcher::*;
 
-use super::{assignment::Assignment, utils::get_sign};
-
-/*impl Watcher{
-    fn unwrap(&self)->i64{
-        match self{
-            &Unit(v) => v,
-            &WatchedFromTo(from,to) => (from,to),
-            Conflict => panic!("Unwrap on conflict")
-        }
-    }
-}*/
+use super::{assignment::Assignment, literal::Literal};
 
 #[derive(Clone)]
 pub struct Clause {
-    pub data: Vec<i64>,
+    pub literals: Vec<Literal>,
     watch_ptr: [usize; 2],
     status: ClauseStates,
 }
 
 impl fmt::Debug for Clause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Define how you want your struct to be printed
-        for (i, lit) in self.data.iter().enumerate() {
+        for (i, lit) in self.literals.iter().enumerate() {
             if (self.watch_ptr[0] == i) || (self.watch_ptr[1] == i) {
-                write!(f, "•");
+                write!(f, "•")?;
             }
-            write!(f, "{:?},", lit);
+            write!(f, "{:?},", lit)?;
         }
-        writeln!(f, "");
-        Ok(())
+        writeln!(f)
     }
 }
 
 impl Clause {
-    pub fn new(data: Vec<i64>) -> Clause {
+    pub fn new(literals: Vec<Literal>) -> Clause {
         Clause {
-            data,
+            literals,
             watch_ptr: [0, 1],
             status: ClauseStates::Unresolved,
         }
     }
 
     pub fn new_vec(arr: Vec<Vec<i64>>) -> Vec<Clause> {
-        arr.into_iter().map(Clause::new).collect()
+        arr.into_iter()
+            .map(|v| v.iter().map(|x| Literal::new(&x)).collect())
+            .map(Clause::new)
+            .collect()
     }
 
-    pub fn watch(&mut self, lit: i64, model: &[Option<Assignment>]) -> Watcher {
+    pub fn watch(&mut self, lit: Literal, model: &[Option<Assignment>]) -> Watcher {
         if let ClauseStates::Satisfied(lit) = self.status {
             Watcher::NewWatched(lit)
         } else {
-            if self.data.len() == 1 {
+            if self.literals.len() == 1 {
                 return Unit(lit);
             }
             let ind: usize = if self.point(0) == lit {
@@ -108,20 +98,19 @@ impl Clause {
             Watcher::Unit(_) => None,
             Watcher::Conflict => None,
             &Watcher::NewWatched(to) => {
-                let polarity = get_sign(to);
-                model[to.unsigned_abs() as usize].map(|assignment| assignment.polarity == polarity)
+                model[to.variable].map(|assignment| assignment.polarity != to.polarity)
             }
         }
     }
 
     //retorna o valor apontado pelo ponteiro i
-    fn point(&self, i: usize) -> i64 {
-        self.data[self.watch_ptr[i]]
+    fn point(&self, i: usize) -> Literal {
+        self.literals[self.watch_ptr[i]]
     }
 
     fn next(&mut self, i: usize) -> Watcher {
         // Se o outro ponteiro já tiver explodido, retorna conflito
-        if self.watch_ptr[(i + 1) % 2] >= self.data.len() {
+        if self.watch_ptr[(i + 1) % 2] >= self.literals.len() {
             return Conflict; //Isso deve ser código morto, mas vou deixar essa linha pra detectar bug
         }
         let max_pointer = std::cmp::max(self.watch_ptr[0], self.watch_ptr[1]);
@@ -134,7 +123,7 @@ impl Clause {
         self.watch_ptr[i] = max_pointer + 1;
 
         // caso ponteiro ultrapasse o array, retorna o literal que sobrou no outro ponteiro para ser propagado
-        if self.watch_ptr[i] == self.data.len() {
+        if self.watch_ptr[i] == self.literals.len() {
             self.status = ClauseStates::Unit(self.point((i + 1) % 2));
             Unit(self.point((i + 1) % 2))
         } else {
@@ -142,16 +131,15 @@ impl Clause {
         }
     }
 
-    pub fn resolution(&self, other: &Clause, pivot: usize) -> Clause {
-        let pos_pivot = pivot as i64;
-        let mut first: HashSet<i64> = self.data.iter().cloned().collect();
-        let second: HashSet<i64> = other.data.iter().cloned().collect();
+    pub fn resolution(&self, other: &Clause, pivot: Literal) -> Clause {
+        let mut first: HashSet<Literal> = self.literals.iter().cloned().collect();
+        let second: HashSet<Literal> = other.literals.iter().cloned().collect();
         first.extend(&second);
-        first.remove(&pos_pivot);
-        first.remove(&(-pos_pivot));
-        let data: Vec<i64> = first.into_iter().collect();
+        first.remove(&pivot);
+        first.remove(&pivot.negate());
+        let data: Vec<Literal> = first.into_iter().collect();
         Clause {
-            data,
+            literals: data,
             watch_ptr: [0, 1],
             status: ClauseStates::Unresolved,
         }
@@ -160,8 +148,8 @@ impl Clause {
 
 #[derive(Clone, Debug)]
 enum ClauseStates {
-    Satisfied(i64),
-    Falsified(i64),
-    Unit(i64),
+    Satisfied(Literal),
+    Falsified(Literal),
+    Unit(Literal),
     Unresolved,
 }
