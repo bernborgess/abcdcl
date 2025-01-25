@@ -29,9 +29,10 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
         while solver.propagate_gives_conflict(&mut trivial_or_decided) {
             match solver.analyze_conflict() {
                 None => return UNSAT,
-                Some((_b, _learnt_clause)) => {
+                Some((b, learnt_clause)) => {
                     // Add learnt clause to clause list
                     // Apply backtrack of dl b
+                    trivial_or_decided = Some(solver.backjump(b, learnt_clause));
                     // Set new dl to b
                     // Add negation of the unset literal in learnt_clause to the model
                     // Add is to propagate too
@@ -266,24 +267,29 @@ impl Cdcl {
                     //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
                     for &c_ind in clauses_to_watch.iter() {
                         //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
-                        match self.clauses_list[c_ind].watch(current.negate(), &model) {
-                            // no unit found
+                        match self.clauses_list[c_ind].watch(
+                            current.negate(),
+                            &model,
+                            self.decision_level,
+                        ) {
+                            // não encontrou unidade
                             Watched(new_watched) => {
-                                //self.occur_lists.remove_clause_from_lit(c_ind, -current);
+                                //self.occur_lists.remove_clause_from_lit(c_ind, -current);  //desnecessário?
                                 occur_lists.add_clause_to_lit(c_ind, new_watched)
                             }
-                            //AlreadyWatched(lit) => (),
                             OnlyOneRemaining(to_prop) => {
                                 // checa se to_prop é conflitante com o modelo
                                 match Cdcl::model_opinion(&model, to_prop) {
                                     Some(false) => {
-                                        //probably dead code
+                                        //abslutamente vivo código
                                         self.conflicting = Some(self.clauses_list[c_ind].clone());
                                         self.model = model;
                                         occur_lists.give_to(clauses_to_watch, current.negate());
                                         return true;
                                     }
-                                    Some(true) => self.clauses_list[c_ind].set_satisfied(to_prop),
+                                    Some(true) => {
+                                        self.clauses_list[c_ind].set_satisfied(self.decision_level)
+                                    }
                                     None => {
                                         self.unassigned.remove(&to_prop.variable);
                                         propagate_arr.push_back(to_prop);
@@ -301,6 +307,7 @@ impl Cdcl {
                                 return true;*/
                                 panic!("Isso devia ser código morto");
                             }
+                            AlreadyWatched => (),
                         }
                     }
                     occur_lists.give_to(clauses_to_watch, current.negate());
@@ -385,7 +392,7 @@ impl Cdcl {
     }
 
     /// Add a new clause and prepares the watched literals
-    fn _add_clause(&mut self, literals: Vec<Literal>) {
+    fn add_clause(&mut self, literals: Vec<Literal>) {
         let new_clause_id = self.clauses_list.len();
 
         if self.clauses_list.len() < 2 {
@@ -402,6 +409,28 @@ impl Cdcl {
         // Add clause to problem
         let learnt_clause = Clause::new(literals);
         self.clauses_list.push(learnt_clause);
+    }
+
+    //muda para None a atribuição de variáveis com decision level maior que b
+    //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
+    fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
+        self.decision_level = b;
+        let mut to_propagate: Queue = Queue::new();
+        for &lit in learnt_clause.literals.iter() {
+            if !self.literal_has_max_dl(lit) {
+                to_propagate.push_front(lit.negate());
+            }
+        }
+        self.add_clause(learnt_clause.literals);
+        for asg in self.model.iter_mut().skip(1) {
+            if let Some(asgnmt) = asg {
+                if asgnmt.dl > b {
+                    *asg = None;
+                }
+            }
+        }
+        self.conflicting = None;
+        to_propagate
     }
 
     fn literal_is_undefined(&self, lit: Literal) -> bool {
@@ -548,7 +577,7 @@ impl Cdcl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    /*#[test]
+    #[test]
     fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0);
         assert_eq!(result, SAT(vec![]));
@@ -659,7 +688,7 @@ mod tests {
             SAT(m) => println!("TODO"),
             _ => panic!("backtrack small case fail"),
         }
-    }*/
+    }
 
     #[test]
     fn check_return_level() {
@@ -674,7 +703,7 @@ mod tests {
 
         let result = run_cdcl_debug(cnf, 9, 3);
         match result {
-            Mock(b) => assert_eq!(b, 3),
+            Mock(b) => assert_eq!(b, 1),
             _ => panic!("check_return_level fail"),
         }
     }

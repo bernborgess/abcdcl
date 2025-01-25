@@ -3,6 +3,7 @@ use std::fmt;
 pub enum Watcher {
     OnlyOneRemaining(Literal),
     Watched(Literal),
+    AlreadyWatched,
     Conflict,
 }
 
@@ -14,7 +15,7 @@ use super::{assignment::Assignment, literal::Literal};
 pub struct Clause {
     pub literals: Vec<Literal>,
     watch_ptr: [usize; 2],
-    status: ClauseStates,
+    satisfied_on_dl: Option<usize>,
 }
 
 impl fmt::Debug for Clause {
@@ -34,7 +35,7 @@ impl Clause {
         Clause {
             literals,
             watch_ptr: [0, 1],
-            status: ClauseStates::Unresolved,
+            satisfied_on_dl: None,
         }
     }
 
@@ -45,22 +46,31 @@ impl Clause {
             .collect()
     }
 
-    pub fn watch(&mut self, lit: Literal, model: &[Option<Assignment>]) -> Watcher {
-        if let ClauseStates::Satisfied(lit) = self.status {
-            Watcher::Watched(lit)
-        } else {
-            if self.literals.len() == 1 {
-                return OnlyOneRemaining(lit);
+    pub fn watch(
+        &mut self,
+        lit: Literal,
+        model: &[Option<Assignment>],
+        decision_level: usize,
+    ) -> Watcher {
+        if let Some(sats) = self.satisfied_on_dl {
+            if sats <= decision_level {
+                return Watched(lit);
             }
-            let ind: usize = if self.point(0) == lit {
-                //seleciona o ponteiro que vai ser movido
-                0
-            } else if self.point(1) == lit {
-                1
-            } else {
-                panic!("There's only 2 pointers")
-            };
-
+            self.satisfied_on_dl = None;
+        }
+        if self.literals.len() == 1 {
+            return OnlyOneRemaining(lit);
+        }
+        let opt_ind: Option<usize> = if self.point(0) == lit {
+            //seleciona o ponteiro que vai ser movido
+            Some(0)
+        } else if self.point(1) == lit {
+            Some(1)
+        } else {
+            //se nenhum dos ponteiros aponta para lit, essa cláusula já foi vigiado e lit está para trás
+            None
+        };
+        if let Some(ind) = opt_ind {
             //move o ponteiro
             let mut status: Watcher = self.next(ind);
 
@@ -74,17 +84,19 @@ impl Clause {
             }
 
             match &status{
-                &Watcher::OnlyOneRemaining(to_prop) => (),
-                &Watcher::Watched(new_lit) => {
+                &Watcher::OnlyOneRemaining(_) => (),
+                &Watcher::Watched(_) => {
                     match sat_or_unsat{
-                        Some(true) => self.status = ClauseStates::Satisfied(new_lit),
+                        Some(true) => self.satisfied_on_dl = Some(decision_level),
                         Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
-                        None => self.status = ClauseStates::Unresolved,
+                        None => self.satisfied_on_dl = None,
                     }
                 }
-                Watcher::Conflict => panic!("Should be dead"),
+                _ => panic!("Should be dead"),
             }
             status
+        } else {
+            Watcher::AlreadyWatched
         }
     }
 
@@ -95,11 +107,10 @@ impl Clause {
         model: &[Option<Assignment>],
     ) -> Option<bool> {
         match status {
-            Watcher::OnlyOneRemaining(_) => None,
-            Watcher::Conflict => None,
             &Watcher::Watched(to) => {
                 model[to.variable].map(|assignment| assignment.polarity != to.polarity)
             }
+            _ => None,
         }
     }
 
@@ -156,12 +167,12 @@ impl Clause {
         Clause {
             literals: first,
             watch_ptr: [0, 1],
-            status: ClauseStates::Unresolved,
+            satisfied_on_dl: None,
         }
     }
 
-    pub fn set_satisfied(&mut self, lit: Literal) {
-        self.status = ClauseStates::Satisfied(lit);
+    pub fn set_satisfied(&mut self, decision_level: usize) {
+        self.satisfied_on_dl = Some(decision_level);
     }
 }
 
