@@ -4,12 +4,12 @@ use literal::Literal;
 use mockall::predicate::*;
 use mockall::*;
 use occurlist::OccurLists;
+use rand::prelude::IteratorRandom;
 use rand::Rng;
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
 use std::mem;
 use utils::print_model;
-
 pub mod assignment;
 pub mod clause;
 pub mod literal;
@@ -23,7 +23,7 @@ pub trait DecideHeuristic {
     // Gets a random boolean
     fn next_polarity(&self) -> bool;
     // Gets a random variable, if any exist
-    fn next_variable(&self, variables_len: usize) -> Option<usize>;
+    fn next_variable(&self, unassigned: &HashSet<usize>) -> Option<usize>;
 }
 
 pub struct RandomDecideHeuristic {}
@@ -34,12 +34,9 @@ impl DecideHeuristic for RandomDecideHeuristic {
         rng.gen()
     }
 
-    fn next_variable(&self, variables_len: usize) -> Option<usize> {
-        if variables_len == 0 {
-            return None;
-        }
+    fn next_variable(&self, unassigned: &HashSet<usize>) -> Option<usize> {
         let mut rng = rand::thread_rng();
-        Some(rng.gen_range(0..variables_len))
+        Some(*unassigned.iter().choose(&mut rng)?)
     }
 }
 
@@ -64,8 +61,6 @@ pub enum CdclResult {
 use CdclResult::*;
 
 pub struct Cdcl<H: DecideHeuristic> {
-    //partial_model: Vec<InnerAssignment>, // Vetor usado pelas regras,
-    //decision_points: Vec<usize>, // Se o valor k está nesse vetor, quer dizer que partial_model[k] está em um decision level acima de partial_model[k-1]
     pub clauses_list: Vec<Clause>,  // array de cláusulas
     unassigned: HashSet<usize>,     // conjunto de todos os átomos sem valor atribuído
     number_of_atoms: usize,         // total de átomos
@@ -73,8 +68,6 @@ pub struct Cdcl<H: DecideHeuristic> {
     conflicting: Option<Clause>,    // cláusula conflitante
     occur_lists: OccurLists,        //lista de ocorrências
     model: Vec<Option<Assignment>>, //elemento k é Some(true) se o átomo k for verdadeiro, Some(false) se for falso e None se não estiver atribuído
-    // debug_decisions: Vec<Literal>,
-    // important for testing
     decide_heuristic: H,
 }
 
@@ -82,8 +75,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
     #[must_use]
     pub fn new(number_of_atoms: usize, decide_heuristic: H) -> Self {
         Cdcl {
-            //partial_model: vec![],
-            //decision_points: vec![],
             clauses_list: vec![],
             unassigned: (1..=number_of_atoms).collect(),
             number_of_atoms,
@@ -91,7 +82,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
             conflicting: None,
             occur_lists: OccurLists::new(0),
             model: vec![None; number_of_atoms + 1], //aloco 1 espaço a mais para garantir indexação em base 1
-            // debug_decisions: vec![],
             decide_heuristic,
         }
     }
@@ -164,10 +154,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
             for &raw_lit in clause.iter() {
                 let lit = Literal::new(&raw_lit);
                 let full_list = full_occur_lists.get_mut(lit);
-                // let atom = raw_lit.unsigned_abs() as usize;
                 match raw_lit.cmp(&0) {
                     Ordering::Less => {
-                        // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
                         full_list.push(clause_ind);
                         seen_status[lit.variable] = match seen_status[lit.variable] {
                             Seen::Unseen => Seen::Negative,
@@ -177,7 +165,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         };
                     }
                     Ordering::Greater => {
-                        // aproveito que estou iterando sobre as cláusulas para preencher as listas de ocorrência
                         full_list.push(clause_ind);
                         seen_status[lit.variable] = match seen_status[lit.variable] {
                             Seen::Unseen => Seen::Positive,
@@ -244,7 +231,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
         Some(cnf)
     }
 
-    //TODO: Test
     pub fn propagate_gives_conflict(&mut self, to_propagate: &mut Option<Queue>) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model: Vec<Option<Assignment>> = mem::take(&mut self.model);
@@ -256,9 +242,10 @@ impl<H: DecideHeuristic> Cdcl<H> {
             //print_model(&model);
             match to_propagate.pop_front() {
                 None => {
+                    //a fila está vazia, não tem nada para propagar, então retorno sem acusar conflito
                     self.model = model;
                     return false;
-                } //a fila está vazia, não tem nada para propagar, então retorno sem acusar conflito
+                }
                 Some(current) => {
                     let clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
                     //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
@@ -278,7 +265,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                 // checa se to_prop é conflitante com o modelo
                                 match Cdcl::<H>::model_opinion(&model, to_prop) {
                                     Some(false) => {
-                                        //abslutamente vivo código
+                                        //absoluto vivo código
+                                        //last standing é falseado pelo modelo e falseado pelo modelo, então um conflito foi encontrado
                                         self.conflicting = Some(self.clauses_list[c_ind].clone());
                                         self.model = model;
                                         occur_lists.give_to(clauses_to_watch, current.negate());
@@ -459,7 +447,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     fn decide(&mut self) -> Option<Literal> {
         let polarity = self.decide_heuristic.next_polarity();
-        let variable = self.decide_heuristic.next_variable(self.unassigned.len())?;
+        let variable = self.decide_heuristic.next_variable(&self.unassigned)?;
         self.decision_level += 1;
         self.unassigned.remove(&variable);
         let lit: Literal = Literal { variable, polarity };
