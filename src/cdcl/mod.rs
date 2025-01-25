@@ -97,7 +97,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 match self.analyze_conflict() {
                     None => return UNSAT,
                     Some((b, learnt_clause)) => {
-                        // Add learnt clause to clause list
+                        to_propagate = Some(self.backjump(b, learnt_clause));
+                        /*// Add learnt clause to clause list
                         self.add_clause(learnt_clause.literals.clone());
                         // Apply backtrack of dl b
                         self.backtrack(b);
@@ -118,7 +119,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         // Add it to propagate too
                         to_propagate
                             .get_or_insert_with(VecDeque::new)
-                            .push_back(learned_literal);
+                            .push_back(learned_literal);*/
                     }
                 }
             }
@@ -129,11 +130,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 Some(a) => to_propagate = Some(VecDeque::from(vec![a])),
             }
         }
-    }
-
-    // TODO:
-    fn backtrack(&mut self, b: usize) {
-        todo!("HEY! IMPLEMENT ME! {b}")
     }
 
     // Remove duplicatas, realiza atribuições triviais (PURE e cláusulas unitárias), remove cláusulas satisfeitas
@@ -394,14 +390,18 @@ impl<H: DecideHeuristic> Cdcl<H> {
     //muda para None a atribuição de variáveis com decision level maior que b
     //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
     fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
-        self.decision_level = b;
+        // Coloca as negações de todos os literais de dl mais baixo em uma fila para
+        // serem propagados e deduzirem o literal de maior dl na cláusula aprendida
         let mut to_propagate: Queue = Queue::new();
         for &lit in learnt_clause.literals.iter() {
             if !self.literal_has_max_dl(lit) {
                 to_propagate.push_front(lit.negate());
             }
         }
+        //adiciona a cláusula aprendida ao solver
         self.add_clause(learnt_clause.literals);
+
+        // Remove todos as atribuições com dl maior que b do modelo
         for asg in self.model.iter_mut().skip(1) {
             if let Some(asgnmt) = asg {
                 if asgnmt.dl > b {
@@ -409,7 +409,13 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 }
             }
         }
+
+        // Torna b o decision level atual
+        self.decision_level = b;
+
+        // Limpa o campo de cláusula de conflito
         self.conflicting = None;
+
         to_propagate
     }
 
