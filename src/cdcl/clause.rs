@@ -84,8 +84,8 @@ impl Clause {
             }
 
             match &status{
-                &Watcher::OnlyOneRemaining(_) => (),
-                &Watcher::Watched(_) => {
+                Watcher::OnlyOneRemaining(_) => (),
+                Watcher::Watched(_) => {
                     match sat_or_unsat{
                         Some(true) => self.satisfied_on_dl = Some(decision_level),
                         Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
@@ -108,7 +108,7 @@ impl Clause {
     ) -> Option<bool> {
         match status {
             &Watcher::Watched(to) => {
-                model[to.variable].map(|assignment| assignment.polarity != to.polarity)
+                model[to.variable].map(|assignment| assignment.polarity == to.polarity)
             }
             _ => None,
         }
