@@ -9,7 +9,7 @@ use rand::Rng;
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
 use std::mem;
-use utils::print_model;
+use utils::{print_model, remove_clauses_from_lit};
 pub mod assignment;
 pub mod clause;
 pub mod literal;
@@ -243,8 +243,9 @@ impl<H: DecideHeuristic> Cdcl<H> {
                     return false;
                 }
                 Some(current) => {
-                    let clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
+                    let mut clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
                     //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
+                    let to_remove_from_occur: Vec<usize> = vec![];
                     for &c_ind in clauses_to_watch.iter() {
                         //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                         match self.clauses_list[c_ind].watch(
@@ -254,7 +255,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         ) {
                             // não encontrou unidade
                             Watched(new_watched) => {
-                                //self.occur_lists.remove_clause_from_lit(c_ind, -current);  //desnecessário?
+                                // Adiciona a cláusula atual a lista de ocorrências do novo literal vigiado
                                 occur_lists.add_clause_to_lit(c_ind, new_watched)
                             }
                             OnlyOneRemaining(to_prop) => {
@@ -291,6 +292,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             AlreadyWatched => (),
                         }
                     }
+                    // Atualiza a lista de ocorrência que foi iterada recentemente para retirar as cláusulas que não são mais vigiadas
+                    remove_clauses_from_lit(&to_remove_from_occur, &mut clauses_to_watch);
                     occur_lists.give_to(clauses_to_watch, current.negate());
                 }
             };

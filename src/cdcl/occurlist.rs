@@ -53,14 +53,6 @@ impl OccurLists {
         self.get_mut(lit).push(clause_id);
     }
 
-    fn remove_clauses_from_lit(&mut self, clauses: &Vec<usize>, lit: Literal) {
-        let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
-        *lit_occur_list = lit_occur_list
-            .drain(..)
-            .filter(|x| !clauses.contains(x))
-            .collect();
-    }
-
     fn remove_clause_from_lit(&mut self, clause: usize, lit: Literal) {
         let lit_occur_list: &mut Vec<usize> = self.get_mut(lit);
         *lit_occur_list = lit_occur_list.drain(..).filter(|&x| clause != x).collect();
