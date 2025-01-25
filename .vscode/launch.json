@@ -30,14 +30,16 @@
                     "--no-run",
                     "--lib",
                     "--package=abcdclt",
-                    "empty_cnf_is_unsat"
+                    "check_return_level",
                 ],
                 "filter": {
                     "name": "abcdclt",
                     "kind": "lib"
                 }
             },
-            "args": [],
+            "args": [
+                "--nocapture"
+            ],
             "cwd": "${workspaceFolder}"
         }
     ]

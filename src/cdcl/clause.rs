@@ -1,74 +1,76 @@
+use std::collections::HashSet;
 use std::fmt;
-
 pub enum Watcher {
-    Unit(i64),
-    //AlreadyWatched(i64),
-    NewWatched(i64),
+    OnlyOneRemaining(Literal),
+    Watched(Literal),
+    AlreadyWatched,
     Conflict,
 }
 
 use Watcher::*;
 
-use super::utils::get_sign;
-
-/*impl Watcher{
-    fn unwrap(&self)->i64{
-        match self{
-            &Unit(v) => v,
-            &WatchedFromTo(from,to) => (from,to),
-            Conflict => panic!("Unwrap on conflict")
-        }
-    }
-}*/
+use super::{assignment::Assignment, literal::Literal};
 
 #[derive(Clone)]
 pub struct Clause {
-    pub data: Vec<i64>,
+    pub literals: Vec<Literal>,
     watch_ptr: [usize; 2],
-    status: ClauseStates,
+    satisfied_on_dl: Option<usize>,
 }
 
 impl fmt::Debug for Clause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Define how you want your struct to be printed
-        for (i, lit) in self.data.iter().enumerate() {
+        for (i, lit) in self.literals.iter().enumerate() {
             if (self.watch_ptr[0] == i) || (self.watch_ptr[1] == i) {
-                write!(f, "•");
+                write!(f, "•")?;
             }
-            write!(f, "{:?},", lit);
+            write!(f, "{:?},", lit)?;
         }
-        writeln!(f, "");
-        Ok(())
+        writeln!(f)
     }
 }
 
 impl Clause {
-    pub fn new(arr: Vec<Vec<i64>>) -> Vec<Clause> {
+    pub fn new(literals: Vec<Literal>) -> Clause {
+        Clause {
+            literals,
+            watch_ptr: [0, 1],
+            satisfied_on_dl: None,
+        }
+    }
+
+    pub fn new_vec(arr: Vec<Vec<i64>>) -> Vec<Clause> {
         arr.into_iter()
-            .map(|v| Clause {
-                data: v,
-                watch_ptr: [0, 1],
-                status: ClauseStates::Unresolved,
-            })
+            .map(|v| v.iter().map(|x| Literal::new(&x)).collect())
+            .map(Clause::new)
             .collect()
     }
 
-    pub fn watch(&mut self, lit: i64, model: &[Option<bool>]) -> Watcher {
-        if let ClauseStates::Satisfied(lit) = self.status {
-            Watcher::NewWatched(lit)
-        } else {
-            if self.data.len() == 1 {
-                return Unit(lit);
+    pub fn watch(
+        &mut self,
+        lit: Literal,
+        model: &[Option<Assignment>],
+        decision_level: usize,
+    ) -> Watcher {
+        if let Some(sats) = self.satisfied_on_dl {
+            if sats <= decision_level {
+                return Watched(lit);
             }
-            let ind: usize = if self.point(0) == lit {
-                //seleciona o ponteiro que vai ser movido
-                0
-            } else if self.point(1) == lit {
-                1
-            } else {
-                panic!("There's only 2 pointers")
-            };
-
+            self.satisfied_on_dl = None;
+        }
+        if self.literals.len() == 1 {
+            return OnlyOneRemaining(lit);
+        }
+        let opt_ind: Option<usize> = if self.point(0) == lit {
+            //seleciona o ponteiro que vai ser movido
+            Some(0)
+        } else if self.point(1) == lit {
+            Some(1)
+        } else {
+            //se nenhum dos ponteiros aponta para lit, essa cláusula já foi vigiado e lit está para trás
+            None
+        };
+        if let Some(ind) = opt_ind {
             //move o ponteiro
             let mut status: Watcher = self.next(ind);
 
@@ -82,40 +84,44 @@ impl Clause {
             }
 
             match &status{
-                &Watcher::Unit(to_prop) => self.status = ClauseStates::Unit(to_prop),
-                &Watcher::NewWatched(new_lit) => {
+                Watcher::OnlyOneRemaining(_) => (),
+                Watcher::Watched(_) => {
                     match sat_or_unsat{
-                        Some(true) => self.status = ClauseStates::Satisfied(new_lit),
+                        Some(true) => self.satisfied_on_dl = Some(decision_level),
                         Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
-                        None => self.status = ClauseStates::Unresolved,
+                        None => self.satisfied_on_dl = None,
                     }
                 }
-                Watcher::Conflict => panic!("Should be dead"),
+                _ => panic!("Should be dead"),
             }
             status
+        } else {
+            Watcher::AlreadyWatched
         }
     }
 
     //Some(true) se satisfeito, Some(false) se falseado, None se não atribuído ou se é Unidade ou Conflito
-    fn satisfied_or_falsified(&self, status: &Watcher, model: &[Option<bool>]) -> Option<bool> {
+    fn satisfied_or_falsified(
+        &self,
+        status: &Watcher,
+        model: &[Option<Assignment>],
+    ) -> Option<bool> {
         match status {
-            Watcher::Unit(_) => None,
-            Watcher::Conflict => None,
-            &Watcher::NewWatched(to) => {
-                let polarity = get_sign(to);
-                model[to.unsigned_abs() as usize].map(|assignment| assignment == polarity)
+            &Watcher::Watched(to) => {
+                model[to.variable].map(|assignment| assignment.polarity == to.polarity)
             }
+            _ => None,
         }
     }
 
     //retorna o valor apontado pelo ponteiro i
-    fn point(&self, i: usize) -> i64 {
-        self.data[self.watch_ptr[i]]
+    fn point(&self, i: usize) -> Literal {
+        self.literals[self.watch_ptr[i]]
     }
 
     fn next(&mut self, i: usize) -> Watcher {
         // Se o outro ponteiro já tiver explodido, retorna conflito
-        if self.watch_ptr[(i + 1) % 2] >= self.data.len() {
+        if self.watch_ptr[(i + 1) % 2] >= self.literals.len() {
             return Conflict; //Isso deve ser código morto, mas vou deixar essa linha pra detectar bug
         }
         let max_pointer = std::cmp::max(self.watch_ptr[0], self.watch_ptr[1]);
@@ -128,19 +134,50 @@ impl Clause {
         self.watch_ptr[i] = max_pointer + 1;
 
         // caso ponteiro ultrapasse o array, retorna o literal que sobrou no outro ponteiro para ser propagado
-        if self.watch_ptr[i] == self.data.len() {
-            self.status = ClauseStates::Unit(self.point((i + 1) % 2));
-            Unit(self.point((i + 1) % 2))
+        if self.watch_ptr[i] == self.literals.len() {
+            OnlyOneRemaining(self.point((i + 1) % 2))
         } else {
-            NewWatched(self.point(i)) // retorna o novo literal vigiado
+            Watched(self.point(i)) // retorna o novo literal vigiado
         }
+    }
+
+    pub fn resolution(&self, other: &Clause, pivot: Literal) -> Clause {
+        let mut first: Vec<Literal> = self
+            .literals
+            .iter()
+            .filter(|&x| x != &pivot)
+            .cloned()
+            .collect();
+        let second: Vec<Literal> = other.literals.clone();
+        println!("Resolving on pivot {:?}: ", &pivot);
+        println!("{:?}", &self.literals);
+        println!("{:?}", &second);
+        let mut seen: HashSet<Literal> = first.iter().cloned().collect();
+        seen.remove(&pivot);
+        seen.remove(&pivot.negate());
+
+        for &item in second.iter() {
+            //só insere se o item não está no conjunto e não é o pivo
+            if (!seen.contains(&item)) && (item.variable != pivot.variable) {
+                first.push(item);
+            }
+        }
+        println!("Result:");
+        println!("{:?}\n", &first);
+        Clause {
+            literals: first,
+            watch_ptr: [0, 1],
+            satisfied_on_dl: None,
+        }
+    }
+
+    pub fn set_satisfied(&mut self, decision_level: usize) {
+        self.satisfied_on_dl = Some(decision_level);
     }
 }
 
 #[derive(Clone, Debug)]
 enum ClauseStates {
-    Satisfied(i64),
-    Falsified(i64),
-    Unit(i64),
+    Satisfied(Literal),
     Unresolved,
 }
