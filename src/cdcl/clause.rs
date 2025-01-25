@@ -59,6 +59,7 @@ impl Clause {
             self.satisfied_on_dl = None;
         }
         if self.literals.len() == 1 {
+            //devia ser código morto
             return OnlyOneRemaining(lit);
         }
         let opt_ind: Option<usize> = if self.point(0) == lit {
@@ -74,7 +75,7 @@ impl Clause {
             //move o ponteiro
             let mut status: Watcher = self.next(ind);
 
-            //se não encontrar uma cláusula unitária, checa o novo literal vigiado
+            //se não encontrar uma cláusula OnlyOneRemaining, checa o novo literal vigiado
             //se o novo literal vigiado for falseado pelo modelo, move o ponteiro de novo
             //se o novo literal vigiado for satisfeito pelo modelo, para de vigiar a cláusula
             let mut sat_or_unsat = self.satisfied_or_falsified(&status, model);
@@ -88,7 +89,7 @@ impl Clause {
                 Watcher::Watched(_) => {
                     match sat_or_unsat{
                         Some(true) => self.satisfied_on_dl = Some(decision_level),
-                        Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
+                        Some(false) => panic!("This should be impossible. The pointer should move until this turn into OnlyOneRemaining or find a non-falsified literal"),
                         None => self.satisfied_on_dl = None,
                     }
                 }
@@ -116,11 +117,13 @@ impl Clause {
 
     //retorna o valor apontado pelo ponteiro i
     fn point(&self, i: usize) -> Literal {
-        self.literals[self.watch_ptr[i]]
+        *self
+            .literals
+            .get(self.watch_ptr[i])
+            .expect("Tentou ler a posição de um ponteiro que já passou do vector")
     }
 
     fn next(&mut self, i: usize) -> Watcher {
-        // Se o outro ponteiro já tiver explodido, retorna conflito
         if self.watch_ptr[(i + 1) % 2] >= self.literals.len() {
             return Conflict; //Isso deve ser código morto, mas vou deixar essa linha pra detectar bug
         }
