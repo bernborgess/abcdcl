@@ -10,7 +10,6 @@ fn main() {
     match result {
         CdclResult::SAT(_) => println!("\nSAT"),
         CdclResult::UNSAT => println!("\nUNSAT"),
-        CdclResult::Mock(_) => println!("What"),
     }
     // eprintln!("{:?}", result);
     //run_demo()
