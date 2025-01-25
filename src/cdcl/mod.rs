@@ -331,7 +331,7 @@ impl Cdcl {
             .clone();
 
         // literals with current decision level
-        let mut literals: Vec<Literal> = learnt
+        let mut literals: Queue = learnt
             .literals
             .iter()
             .filter(|lit| self.literal_has_max_dl(**lit))
@@ -347,7 +347,7 @@ impl Cdcl {
                     .is_some()
             });
             // Select any literal that meets the criterion
-            let literal = literals.first();
+            let literal = literals.front();
             if literal.is_none() {
                 break;
             }

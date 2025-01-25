@@ -139,7 +139,7 @@ impl Clause {
             .collect();
         let second: Vec<Literal> = other.literals.clone();
         println!("Resolving on pivot {:?}: ", &pivot);
-        println!("{:?}", &first);
+        println!("{:?}", &self.literals);
         println!("{:?}", &second);
         let mut seen: HashSet<Literal> = first.iter().cloned().collect();
         seen.remove(&pivot);
@@ -152,7 +152,7 @@ impl Clause {
             }
         }
         println!("Result:");
-        println!("{:?}", &first);
+        println!("{:?}\n", &first);
         Clause {
             literals: first,
             watch_ptr: [0, 1],
