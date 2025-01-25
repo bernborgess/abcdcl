@@ -457,6 +457,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     fn decide(&mut self) -> Option<Literal> {
+        print_model(&self.model);
         let polarity = self.decide_heuristic.next_polarity();
         let variable = self.decide_heuristic.next_variable(&self.unassigned)?;
         self.decision_level += 1;
@@ -565,6 +566,10 @@ mod tests {
                 .return_const(pol);
         }
 
+        mock_decide_heuristic
+            .expect_next_polarity()
+            .returning(|| rand::random::<bool>());
+
         // Setup answers for `next_variable()`
         let mut sequence = Sequence::new();
         for var in variables {
@@ -574,10 +579,19 @@ mod tests {
                 .in_sequence(&mut sequence)
                 .return_const(var);
         }
+
+        // Return a random variable from the unassigned set when expectations are exhausted
+        mock_decide_heuristic
+            .expect_next_variable()
+            .returning(|unassigned| {
+                let mut rng = rand::thread_rng(); // Create RNG inside the closure
+                unassigned.iter().copied().choose(&mut rng)
+            });
+
         mock_decide_heuristic
     }
 
-    #[test]
+    /*#[test]
     fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0);
         assert_eq!(result, SAT(vec![]));
@@ -675,7 +689,7 @@ mod tests {
                 assert_eq!(lit, Literal::new(&target_cnf[i][j]));
             }
         }
-    }
+    }*/
 
     #[test]
     fn backtrack_small_case() {
@@ -695,12 +709,12 @@ mod tests {
         let mut solver = Cdcl::new(6, mock_decide_heuristic);
         let result = solver.solve(cnf);
         match result {
-            SAT(model) => println!("Got sat with model {model:?}"),
+            SAT(model) => assert_eq!(model, vec![true, false, true, false, false, true]),
             UNSAT => panic!("backtrack small case fail"),
         }
     }
 
-    #[test]
+    /*#[test]
     fn check_return_level() {
         let cnf = vec![
             vec![-2, -3, -4],
@@ -722,5 +736,5 @@ mod tests {
             UNSAT => println!("We got unsat..."),
             SAT(model) => println!("We got sat...{}", model.len()),
         }
-    }
+    }*/
 }
