@@ -16,7 +16,7 @@ pub mod literal;
 pub mod occurlist;
 pub mod utils;
 
-type Queue = VecDeque<Literal>;
+type List = VecDeque<Literal>;
 
 #[automock]
 pub trait DecideHeuristic {
@@ -87,13 +87,13 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     pub fn solve(&mut self, cnf: Vec<Vec<i64>>) -> CdclResult {
-        let mut to_propagate: Option<Queue> = self.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
+        let (mut to_propagate, mut decision_counter) = self.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
         if self.clauses_list.is_empty() {
             return self.yield_model();
         }
         self.build_occur_lists();
         loop {
-            while self.propagate_gives_conflict(&mut to_propagate) {
+            while self.propagate_gives_conflict(&mut to_propagate, &mut decision_counter) {
                 match self.analyze_conflict() {
                     None => return UNSAT,
                     Some((b, learnt_clause)) => {
@@ -134,8 +134,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     // Remove duplicatas, realiza atribuições triviais (PURE e cláusulas unitárias), remove cláusulas satisfeitas
     // retorna vetor de Literal para propagar e constrói as cláusulas do solver
-    pub fn pre_process(&mut self, mut cnf: Vec<Vec<i64>>) -> Option<Queue> {
-        let mut decided: Queue = VecDeque::new();
+    pub fn pre_process(&mut self, mut cnf: Vec<Vec<i64>>) -> (Option<List>, usize) {
+        let mut decided: List = VecDeque::new();
         let mut clauses_to_remove: HashSet<usize> = HashSet::new();
         let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.number_of_atoms + 1]; // 1 campo extra para indexar em base 1
         let mut full_occur_lists = OccurLists::new(self.number_of_atoms + 1); // 1 campo extra para indexar em base 1
@@ -184,11 +184,17 @@ impl<H: DecideHeuristic> Cdcl<H> {
             }
         }
 
-        self.grow_model_and_remove_clauses(&decided, &mut clauses_to_remove, &full_occur_lists, cnf)
-            .map(|filtered_cnf| {
-                self.clauses_list = Clause::new_vec(filtered_cnf);
-                decided
-            })
+        let (filtered_formula, decision_counter) = self.grow_model_and_remove_clauses(
+            &decided,
+            &mut clauses_to_remove,
+            &full_occur_lists,
+            cnf,
+        );
+        let to_propagate = filtered_formula.map(|filtered_cnf| {
+            self.clauses_list = Clause::new_vec(filtered_cnf);
+            decided
+        });
+        (to_propagate, decision_counter)
     }
 
     pub fn build_occur_lists(&mut self) {
@@ -203,16 +209,19 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     fn grow_model_and_remove_clauses(
         &mut self,
-        decided: &Queue,
+        decided: &List,
         clauses_to_remove: &mut HashSet<usize>,
         full_occur_lists: &OccurLists,
         mut cnf: Vec<Vec<i64>>,
-    ) -> Option<Vec<Vec<i64>>> {
+    ) -> (Option<Vec<Vec<i64>>>, usize) {
+        let mut decision_counter: usize = 0;
         for &lit in decided.iter() {
             if !self.model_insert(lit, None) {
-                return None; //Unsat case
+                return (None, 0); //Unsat case
             }
-            self.unassigned.remove(&lit.variable);
+            if self.unassigned.remove(&lit.variable) {
+                decision_counter += 1;
+            }
             let occurs = full_occur_lists.get(lit);
             for &clause_ind in occurs.iter() {
                 clauses_to_remove.insert(clause_ind);
@@ -224,19 +233,28 @@ impl<H: DecideHeuristic> Cdcl<H> {
             .filter(|(i, _)| !clauses_to_remove.contains(i))
             .map(|(_, item)| item)
             .collect();
-        Some(cnf)
+        (Some(cnf), decision_counter)
     }
 
-    pub fn propagate_gives_conflict(&mut self, to_propagate: &mut Option<Queue>) -> bool {
+    pub fn propagate_gives_conflict(
+        &mut self,
+        to_propagate_ref: &mut Option<List>,
+        rounds_as_queue: &mut usize,
+    ) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model: Vec<Option<Assignment>> = mem::take(&mut self.model);
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
-        let to_propagate: Option<Queue> = to_propagate.take();
+        let to_propagate: Option<List> = to_propagate_ref.take();
         //println!("trivial_or_decided: {:?}", &trivial_or_decided);
-        let mut to_propagate: Queue = to_propagate.unwrap_or_default();
+        let mut to_propagate: List = to_propagate.unwrap_or_default();
         loop {
-            //print_model(&model);
-            match to_propagate.pop_front() {
+            let propagate_now = if *rounds_as_queue > 0 {
+                *rounds_as_queue -= 1;
+                to_propagate.pop_front()
+            } else {
+                to_propagate.pop_back()
+            };
+            match propagate_now {
                 None => {
                     //a fila está vazia, não tem nada para propagar, então retorno sem acusar conflito
                     self.model = model;
@@ -245,7 +263,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 Some(current) => {
                     let mut clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
                     //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
-                    let to_remove_from_occur: Vec<usize> = vec![];
+                    let mut to_remove_from_occur: Vec<usize> = vec![];
                     for &c_ind in clauses_to_watch.iter() {
                         //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                         match self.clauses_list[c_ind].watch(
@@ -256,20 +274,24 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             // não encontrou unidade
                             Watched(new_watched) => {
                                 // Adiciona a cláusula atual a lista de ocorrências do novo literal vigiado
-                                occur_lists.add_clause_to_lit(c_ind, new_watched)
+                                occur_lists.add_clause_to_lit(c_ind, new_watched);
+                                to_remove_from_occur.push(c_ind);
                             }
                             OnlyOneRemaining(to_prop) => {
                                 // checa se to_prop é conflitante com o modelo
                                 match Cdcl::<H>::model_opinion(&model, to_prop) {
                                     Some(false) => {
                                         //absoluto vivo código
-                                        //last standing é falseado pelo modelo e falseado pelo modelo, então um conflito foi encontrado
+                                        //last standing é falseado pelo modelo, então um conflito foi encontrado
                                         self.conflicting = Some(self.clauses_list[c_ind].clone());
                                         self.model = model;
                                         occur_lists.give_to(clauses_to_watch, current.negate());
+                                        //to_remove_from_occur.push(c_ind); ??? checando
                                         return true;
                                     }
                                     Some(true) => {
+                                        //occur_lists.add_clause_to_lit(c_ind, to_prop); Não precisa, c_ind já está na lista de ocorrência de to_prop
+                                        to_remove_from_occur.push(c_ind); //??? checando
                                         self.clauses_list[c_ind].set_satisfied(self.decision_level)
                                     }
                                     None => {
@@ -317,7 +339,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             .clone();
 
         // literals with current decision level
-        let mut literals: Queue = learnt
+        let mut literals: List = learnt
             .literals
             .iter()
             .filter(|lit| self.literal_has_max_dl(**lit))
@@ -392,10 +414,10 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     //muda para None a atribuição de variáveis com decision level maior que b
     //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
-    fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
+    fn backjump(&mut self, b: usize, learnt_clause: Clause) -> List {
         // Coloca as negações de todos os literais de dl mais baixo em uma fila para
         // serem propagados e deduzirem o literal de maior dl na cláusula aprendida
-        let mut to_propagate: Queue = Queue::new();
+        let mut to_propagate: List = List::new();
         for &lit in learnt_clause.literals.iter() {
             if !self.literal_has_max_dl(lit) {
                 to_propagate.push_front(lit.negate());
@@ -504,20 +526,16 @@ impl<H: DecideHeuristic> Cdcl<H> {
     //ela checa se há contradição ou se um literal inválido está sendo adicionado
     fn model_insert(&mut self, lit: Literal, antecedent: Option<usize>) -> bool {
         match &self.model[lit.variable] {
-            Some(ass) => {
-                if ass.polarity != lit.polarity {
-                    return false;
-                }
-            }
+            Some(asgnmt) => asgnmt.polarity == lit.polarity,
             None => {
                 self.model[lit.variable] = Some(Assignment::new(
                     lit.polarity,
                     self.decision_level,
                     antecedent,
                 ));
+                true
             }
         }
-        true
     }
 
     //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
