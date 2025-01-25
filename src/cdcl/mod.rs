@@ -40,9 +40,13 @@ impl DecideHeuristic for RandomDecideHeuristic {
     }
 }
 
-pub fn run_cdcl(cnf: Vec<Vec<i64>>, number_of_atoms: usize) -> CdclResult {
+pub fn run_cdcl(
+    cnf: Vec<Vec<i64>>,
+    number_of_atoms: usize,
+    pre_process_switch: bool,
+) -> CdclResult {
     let mut solver = Cdcl::new(number_of_atoms, RandomDecideHeuristic {}); // Uses rust RNG
-    solver.solve(cnf)
+    solver.solve(cnf, pre_process_switch)
 }
 
 #[derive(Clone, Debug)]
@@ -86,8 +90,15 @@ impl<H: DecideHeuristic> Cdcl<H> {
         }
     }
 
-    pub fn solve(&mut self, cnf: Vec<Vec<i64>>) -> CdclResult {
-        let mut to_propagate: Option<Queue> = self.pre_process(cnf); //aplica a regra PURE e outros truques de pré-processamento
+    pub fn solve(&mut self, cnf: Vec<Vec<i64>>, pre_process_switch: bool) -> CdclResult {
+        let mut to_propagate: Option<Queue> = if pre_process_switch {
+            self.pre_process(cnf) //aplica a regra PURE e outros truques de pré-processamento
+        } else {
+            self.clauses_list = Clause::new_vec(cnf);
+            None
+        };
+        println!("Pre-processamento concluído: {:?}", &to_propagate);
+        self.print_clauses();
         if self.clauses_list.is_empty() {
             return self.yield_model();
         }
@@ -244,7 +255,11 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 }
                 Some(current) => {
                     let mut clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
-                    //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
+                    /*println!(
+                        "occur_list[{:?}] = {:?}",
+                        current.negate(),
+                        &clauses_to_watch
+                    );*/
                     let mut to_remove_from_occur: Vec<usize> = vec![];
                     for &c_ind in clauses_to_watch.iter() {
                         //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
@@ -457,13 +472,13 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     fn decide(&mut self) -> Option<Literal> {
-        print_model(&self.model);
+        //print_model(&self.model);
         let polarity = self.decide_heuristic.next_polarity();
         let variable = self.decide_heuristic.next_variable(&self.unassigned)?;
         self.decision_level += 1;
         self.unassigned.remove(&variable);
         let lit: Literal = Literal { variable, polarity };
-        eprintln!("decided {lit}");
+        //eprintln!("decided {lit}");
         self.model_insert(lit, None);
         Some(lit)
     }
@@ -591,16 +606,16 @@ mod tests {
         mock_decide_heuristic
     }
 
-    /*#[test]
+    #[test]
     fn empty_cnf_is_sat() {
-        let result = run_cdcl(vec![], 0);
+        let result = run_cdcl(vec![], 0, true);
         assert_eq!(result, SAT(vec![]));
     }
 
     #[test]
     fn single_cnf_is_sat() {
         let cnf = vec![vec![1]];
-        let result = run_cdcl(cnf, 1);
+        let result = run_cdcl(cnf, 1, true);
         match result {
             SAT(assign) => {
                 assert_eq!(assign.len(), 1);
@@ -613,7 +628,7 @@ mod tests {
     #[test]
     fn two_cnf_is_sat() {
         let cnf = vec![vec![1, 2], vec![-1, -2]];
-        let result = run_cdcl(cnf, 2);
+        let result = run_cdcl(cnf, 2, true);
         match result {
             SAT(assign) => {
                 assert_eq!(assign.len(), 2);
@@ -628,8 +643,8 @@ mod tests {
     fn two_cnf_is_unsat() {
         let cnf = vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]];
         // TODO: Fix the backtrack to call this test...
-        // let result = run_cdcl(cnf, 2);
-        let result = UNSAT;
+        let result = run_cdcl(cnf, 2, true);
+        //let result = UNSAT;
         match result {
             UNSAT => (),
             _ => panic!("two cnf is unsat fail"),
@@ -689,7 +704,7 @@ mod tests {
                 assert_eq!(lit, Literal::new(&target_cnf[i][j]));
             }
         }
-    }*/
+    }
 
     #[test]
     fn backtrack_small_case() {
@@ -702,19 +717,19 @@ mod tests {
             vec![6, 2, 4],
         ];
 
-        let polarities = vec![false, false];
-        let variables = vec![4, 2];
+        let polarities = vec![false, true];
+        let variables = vec![2, 6];
         let mock_decide_heuristic = setup_mock(polarities, variables);
 
         let mut solver = Cdcl::new(6, mock_decide_heuristic);
-        let result = solver.solve(cnf);
+        let result = solver.solve(cnf, false);
         match result {
             SAT(model) => assert_eq!(model, vec![true, false, true, false, false, true]),
             UNSAT => panic!("backtrack small case fail"),
         }
     }
 
-    /*#[test]
+    #[test]
     fn check_return_level() {
         let cnf = vec![
             vec![-2, -3, -4],
@@ -730,11 +745,11 @@ mod tests {
         let mock_decide_heuristic = setup_mock(polarities, variables);
 
         let mut solver = Cdcl::new(9, mock_decide_heuristic);
-        let result = solver.solve(cnf);
+        let result = solver.solve(cnf, false);
         // TODO: How to get what "Mock(b)" was returning??
         match result {
             UNSAT => println!("We got unsat..."),
             SAT(model) => println!("We got sat...{}", model.len()),
         }
-    }*/
+    }
 }
