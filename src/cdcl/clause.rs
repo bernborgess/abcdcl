@@ -54,7 +54,7 @@ impl Clause {
     ) -> Watcher {
         if let Some(sats) = self.satisfied_on_dl {
             if sats <= decision_level {
-                return Watched(lit);
+                return AlreadyWatched;
             }
             self.satisfied_on_dl = None;
         }
