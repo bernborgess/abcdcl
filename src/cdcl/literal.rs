@@ -31,9 +31,9 @@ impl Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.polarity {
-            write!(f, "¬{}", self.variable)
-        } else {
             write!(f, "{}", self.variable)
+        } else {
+            write!(f, "¬{}", self.variable)
         }
     }
 }
