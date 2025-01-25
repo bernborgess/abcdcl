@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::fmt;
 pub enum Watcher {
-    Unit(Literal),
-    NewWatched(Literal),
+    OnlyOneRemaining(Literal),
+    Watched(Literal),
     Conflict,
 }
 
@@ -47,10 +47,10 @@ impl Clause {
 
     pub fn watch(&mut self, lit: Literal, model: &[Option<Assignment>]) -> Watcher {
         if let ClauseStates::Satisfied(lit) = self.status {
-            Watcher::NewWatched(lit)
+            Watcher::Watched(lit)
         } else {
             if self.literals.len() == 1 {
-                return Unit(lit);
+                return OnlyOneRemaining(lit);
             }
             let ind: usize = if self.point(0) == lit {
                 //seleciona o ponteiro que vai ser movido
@@ -74,8 +74,8 @@ impl Clause {
             }
 
             match &status{
-                &Watcher::Unit(to_prop) => self.status = ClauseStates::Unit(to_prop),
-                &Watcher::NewWatched(new_lit) => {
+                &Watcher::OnlyOneRemaining(to_prop) => (),
+                &Watcher::Watched(new_lit) => {
                     match sat_or_unsat{
                         Some(true) => self.status = ClauseStates::Satisfied(new_lit),
                         Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
@@ -95,9 +95,9 @@ impl Clause {
         model: &[Option<Assignment>],
     ) -> Option<bool> {
         match status {
-            Watcher::Unit(_) => None,
+            Watcher::OnlyOneRemaining(_) => None,
             Watcher::Conflict => None,
-            &Watcher::NewWatched(to) => {
+            &Watcher::Watched(to) => {
                 model[to.variable].map(|assignment| assignment.polarity != to.polarity)
             }
         }
@@ -124,32 +124,49 @@ impl Clause {
 
         // caso ponteiro ultrapasse o array, retorna o literal que sobrou no outro ponteiro para ser propagado
         if self.watch_ptr[i] == self.literals.len() {
-            self.status = ClauseStates::Unit(self.point((i + 1) % 2));
-            Unit(self.point((i + 1) % 2))
+            OnlyOneRemaining(self.point((i + 1) % 2))
         } else {
-            NewWatched(self.point(i)) // retorna o novo literal vigiado
+            Watched(self.point(i)) // retorna o novo literal vigiado
         }
     }
 
     pub fn resolution(&self, other: &Clause, pivot: Literal) -> Clause {
-        let mut first: HashSet<Literal> = self.literals.iter().cloned().collect();
-        let second: HashSet<Literal> = other.literals.iter().cloned().collect();
-        first.extend(&second);
-        first.remove(&pivot);
-        first.remove(&pivot.negate());
-        let data: Vec<Literal> = first.into_iter().collect();
+        let mut first: Vec<Literal> = self
+            .literals
+            .iter()
+            .filter(|&x| x != &pivot)
+            .cloned()
+            .collect();
+        let second: Vec<Literal> = other.literals.clone();
+        println!("Resolving on pivot {:?}: ", &pivot);
+        println!("{:?}", &first);
+        println!("{:?}", &second);
+        let mut seen: HashSet<Literal> = first.iter().cloned().collect();
+        seen.remove(&pivot);
+        seen.remove(&pivot.negate());
+
+        for &item in second.iter() {
+            //só insere se o item não está no conjunto e não é o pivo
+            if (!seen.contains(&item)) && (item.variable != pivot.variable) {
+                first.push(item);
+            }
+        }
+        println!("Result:");
+        println!("{:?}", &first);
         Clause {
-            literals: data,
+            literals: first,
             watch_ptr: [0, 1],
             status: ClauseStates::Unresolved,
         }
+    }
+
+    pub fn set_satisfied(&mut self, lit: Literal) {
+        self.status = ClauseStates::Satisfied(lit);
     }
 }
 
 #[derive(Clone, Debug)]
 enum ClauseStates {
     Satisfied(Literal),
-    Falsified(Literal),
-    Unit(Literal),
     Unresolved,
 }

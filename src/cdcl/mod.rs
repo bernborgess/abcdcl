@@ -29,7 +29,7 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
         while solver.propagate_gives_conflict(&mut trivial_or_decided) {
             match solver.analyze_conflict() {
                 None => return UNSAT,
-                Some((b, learnt_clause)) => {
+                Some((_b, _learnt_clause)) => {
                     // Add learnt clause to clause list
                     // Apply backtrack of dl b
                     // Set new dl to b
@@ -48,7 +48,6 @@ pub fn run_cdcl(cnf: Vec<Vec<i64>>, lits: usize) -> CdclResult {
 }
 
 pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize, param: usize) -> CdclResult {
-    // eprintln!("TODO: cdcl run {:?}", cnf);
     let mut solver: Cdcl = Cdcl::new(lits);
     if param == 2 {
         solver.debug_decisions = [-4, -2].iter().map(Literal::new).collect();
@@ -65,9 +64,9 @@ pub fn run_cdcl_debug(cnf: Vec<Vec<i64>>, lits: usize, param: usize) -> CdclResu
         while solver.propagate_gives_conflict(&mut trivial_or_decided) {
             match solver.analyze_conflict() {
                 None => return UNSAT,
-                Some((b, learnt_clause)) => {
+                Some((b, _learnt_clause)) => {
                     if true {
-                        return CdclResult::mock(b);
+                        return CdclResult::Mock(b);
                     }
                 }
             }
@@ -93,10 +92,10 @@ enum Seen {
 pub enum CdclResult {
     UNSAT,
     SAT(Vec<bool>),
-    mock(usize),
+    Mock(usize),
 }
 
-fn remove_duplicates<T: Ord>(v: &mut Vec<T>) {
+fn _remove_duplicates<T: Ord>(v: &mut Vec<T>) {
     v.sort();
     v.dedup();
 }
@@ -127,11 +126,11 @@ impl Cdcl {
             conflicting: None,
             occur_lists: OccurLists::new(0),
             model: vec![None; atoms + 1], //aloco 1 espaço a mais para garantir indexação em base 1
-            debug_decisions: (vec![-4, -2]).iter().map(Literal::new).collect(),
+            debug_decisions: vec![],
         }
     }
 
-    fn conflict_model(&self, lit: Literal) -> bool {
+    fn _conflict_model(&self, lit: Literal) -> bool {
         // let ind: usize = lit.unsigned_abs() as usize;
         match &self.model[lit.variable] {
             None => false,
@@ -196,7 +195,7 @@ impl Cdcl {
         match self.grow_model_and_remove_clauses(
             &decided,
             &mut clauses_to_remove,
-            &mut full_occur_lists,
+            &full_occur_lists,
             cnf,
         ) {
             None => {
@@ -251,7 +250,6 @@ impl Cdcl {
     pub fn propagate_gives_conflict(&mut self, trivial_or_decided_ref: &mut Option<Queue>) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
         let mut model: Vec<Option<Assignment>> = mem::take(&mut self.model);
-        //self.f();
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
         let trivial_or_decided: Option<Queue> = trivial_or_decided_ref.take();
         //println!("trivial_or_decided: {:?}", &trivial_or_decided);
@@ -262,22 +260,20 @@ impl Cdcl {
                 None => {
                     self.model = model;
                     return false;
-                } //a fila está vazia, não tem nada para propagar
+                } //a fila está vazia, não tem nada para propagar, então retorno sem acusar conflito
                 Some(current) => {
-                    //self.extend_partial_model(current, decision);
-                    //let mut update_model: Vec<i64> = vec![];
                     let clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
                     //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
                     for &c_ind in clauses_to_watch.iter() {
                         //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                         match self.clauses_list[c_ind].watch(current.negate(), &model) {
                             // no unit found
-                            NewWatched(new_watched) => {
+                            Watched(new_watched) => {
                                 //self.occur_lists.remove_clause_from_lit(c_ind, -current);
                                 occur_lists.add_clause_to_lit(c_ind, new_watched)
                             }
                             //AlreadyWatched(lit) => (),
-                            Unit(to_prop) => {
+                            OnlyOneRemaining(to_prop) => {
                                 // checa se to_prop é conflitante com o modelo
                                 match Cdcl::model_opinion(&model, to_prop) {
                                     Some(false) => {
@@ -287,7 +283,7 @@ impl Cdcl {
                                         occur_lists.give_to(clauses_to_watch, current.negate());
                                         return true;
                                     }
-                                    Some(true) => (),
+                                    Some(true) => self.clauses_list[c_ind].set_satisfied(to_prop),
                                     None => {
                                         self.unassigned.remove(&to_prop.variable);
                                         propagate_arr.push_back(to_prop);
@@ -350,7 +346,6 @@ impl Cdcl {
                     .antecedent
                     .is_some()
             });
-
             // Select any literal that meets the criterion
             let literal = literals.first();
             if literal.is_none() {
@@ -363,7 +358,6 @@ impl Cdcl {
             }
             let antecedent = &self.clauses_list[antecedent.unwrap()];
             learnt = learnt.resolution(antecedent, literal);
-
             // Literals with current decision level
             literals = learnt
                 .literals
@@ -391,7 +385,7 @@ impl Cdcl {
     }
 
     /// Add a new clause and prepares the watched literals
-    fn add_clause(&mut self, literals: Vec<Literal>) {
+    fn _add_clause(&mut self, literals: Vec<Literal>) {
         let new_clause_id = self.clauses_list.len();
 
         if self.clauses_list.len() < 2 {
@@ -434,11 +428,11 @@ impl Cdcl {
         self.literal_has_dl(lit, self.decision_level)
     }
 
-    fn restart_if_applicable(&self) {
+    fn _restart_if_applicable(&self) {
         eprintln!("TODO: restart_if_applicable");
     }
 
-    fn remove_lemmas_if_applicable(&self) {
+    fn _remove_lemmas_if_applicable(&self) {
         eprintln!("TODO: remove_lemmas_if_applicable");
     }
 
@@ -554,8 +548,7 @@ impl Cdcl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    /*
-    #[test]
+    /*#[test]
     fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0);
         assert_eq!(result, SAT(vec![]));
@@ -613,13 +606,8 @@ mod tests {
             vec![-4],
             vec![1, 2, 3],
         ];
-        let target_cnf: Vec<Vec<i64>> = vec![];
         solver.pre_process(original_cnf);
-        for (i, c) in solver.clauses_list.iter().enumerate() {
-            for (j, &lit) in c.literals.iter().enumerate() {
-                assert_eq!(lit, Literal::new(&target_cnf[i][j]));
-            }
-        }
+        assert_eq!(0, solver.clauses_list.len())
     }
 
     #[test]
@@ -686,7 +674,7 @@ mod tests {
 
         let result = run_cdcl_debug(cnf, 9, 3);
         match result {
-            mock(b) => assert_eq!(b, 3),
+            Mock(b) => assert_eq!(b, 3),
             _ => panic!("check_return_level fail"),
         }
     }
