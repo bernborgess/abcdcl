@@ -245,7 +245,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 Some(current) => {
                     let mut clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
                     //println!("occur_list[{:?}] = {:?}", -current, &clauses_to_watch);
-                    let to_remove_from_occur: Vec<usize> = vec![];
+                    let mut to_remove_from_occur: Vec<usize> = vec![];
                     for &c_ind in clauses_to_watch.iter() {
                         //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                         match self.clauses_list[c_ind].watch(
@@ -256,21 +256,23 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             // não encontrou unidade
                             Watched(new_watched) => {
                                 // Adiciona a cláusula atual a lista de ocorrências do novo literal vigiado
-                                occur_lists.add_clause_to_lit(c_ind, new_watched)
+                                occur_lists.add_clause_to_lit(c_ind, new_watched);
+                                to_remove_from_occur.push(c_ind);
                             }
                             OnlyOneRemaining(to_prop) => {
                                 // checa se to_prop é conflitante com o modelo
                                 match Cdcl::<H>::model_opinion(&model, to_prop) {
                                     Some(false) => {
-                                        //absoluto vivo código
-                                        //last standing é falseado pelo modelo e falseado pelo modelo, então um conflito foi encontrado
+                                        // absoluto vivo código
+                                        // last standing é falseado pelo modelo e falseado pelo modelo, então um conflito foi encontrado
                                         self.conflicting = Some(self.clauses_list[c_ind].clone());
                                         self.model = model;
                                         occur_lists.give_to(clauses_to_watch, current.negate());
                                         return true;
                                     }
                                     Some(true) => {
-                                        self.clauses_list[c_ind].set_satisfied(self.decision_level)
+                                        self.clauses_list[c_ind].set_satisfied(self.decision_level);
+                                        to_remove_from_occur.push(c_ind); // ???? checking
                                     }
                                     None => {
                                         self.unassigned.remove(&to_prop.variable);
