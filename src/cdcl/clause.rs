@@ -2,10 +2,10 @@ use std::collections::HashSet;
 use std::fmt;
 
 pub enum Watcher {
-    Unit(Literal),
-    Watched(Literal),
-    Satisfied(Literal),
-    Conflict,
+    Unit(Literal),      // Literal diz quem propagar
+    Watched(Literal),   // Literal diz quem é o novo vigiado
+    Satisfied(Literal), // Literal diz que é o novo vigiado, se o literal for igual ao que chamou watch, não há novo vigiado
+    Conflict(Literal),  // Literal diz a
 }
 
 use crate::cdcl::utils::print_model;
@@ -50,7 +50,7 @@ impl Clause {
         if self.literals.len() == 1 {
             match self.model_agreement(model, lit) {
                 Some(true) => Watcher::Satisfied(lit),
-                Some(false) => Watcher::Conflict,
+                Some(false) => Watcher::Conflict(lit),
                 None => Watcher::Unit(lit),
             }
         } else {
@@ -58,12 +58,11 @@ impl Clause {
             let val_1: Literal = self.point(1).unwrap();
             //verifica se a cláusula já está satisfeita
             if let Some(true) = self.model_agreement(model, val_0) {
+                // Aqui o e no próximo if let, Satisfied retorna lit mesmo se o literal que satisfaz é o outro literal vigiado
+                // Isso serve pra avisar o propagate que essa cláusula já estava satisfeita e portanto os ponteiros não andaram
                 Watcher::Satisfied(lit)
-            } else if let Some(true) = self.model_agreement(model, val_0) {
-                // Aqui o Satisfied retorna lit mesmo se o literal que satisfaz é o outro literal vigiado
-                // Isso serve pra avisar o propagate que essa cláusula já estava satisfeita
-                // E portanto os ponteiros não andaram
-                return Watcher::Satisfied(lit);
+            } else if let Some(true) = self.model_agreement(model, val_1) {
+                Watcher::Satisfied(lit)
             } else {
                 let pointer_to_lit = if val_0 == lit {
                     0
@@ -85,9 +84,14 @@ impl Clause {
         let max_pointer = std::cmp::max(self.watch_ptr[0], self.watch_ptr[1]);
 
         // incrementar o ponteiro faria ele ultrapassar o array
-        // retorna o literal que sobrou para ser propagado
+        // vai retorna o literal que sobrou para ser propagado ou retornar conflito se o último literal discorda do modelo
         if max_pointer == self.literals.len() - 1 {
-            Watcher::Unit(self.point((pointer_to_lit + 1) % 2).unwrap())
+            let last: Literal = self.point((pointer_to_lit + 1) % 2).unwrap();
+            match self.model_agreement(model, last) {
+                Some(true) => panic!("Devia ter retornado satisfied antes de chegar aqui"),
+                Some(false) => Watcher::Conflict(last),
+                None => Watcher::Unit(last),
+            }
         } else {
             // incrementa o ponteiro
             self.watch_ptr[pointer_to_lit] = max_pointer + 1;
@@ -100,6 +104,7 @@ impl Clause {
         }
     }
 
+    // Some(true) se o modelo concorda, Some(false) se ele discorda, None se ele não acha nada
     fn model_agreement(&self, model: &[Option<Assignment>], lit: Literal) -> Option<bool> {
         model[lit.variable].map(|assignment| assignment.polarity == lit.polarity)
     }

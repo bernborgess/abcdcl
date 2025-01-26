@@ -270,7 +270,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                 occur_lists.add_clause_to_lit(c_ind, new_watched);
                                 to_remove_from_occur.push(c_ind);
                             }
-                            Watcher::Conflict => {
+                            Watcher::Conflict(_) => {
                                 // Conflito encontrado
                                 self.conflicting = Some(self.clauses_list[c_ind].clone());
                                 self.model = model;
