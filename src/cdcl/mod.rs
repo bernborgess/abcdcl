@@ -1,5 +1,5 @@
 use assignment::Assignment;
-use clause::{Clause, Watcher::*};
+use clause::{Clause, Watcher, Watcher::*};
 use literal::Literal;
 use mockall::predicate::*;
 use mockall::*;
@@ -97,7 +97,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             self.clauses_list = Clause::new_vec(cnf);
             None
         };
-        self.print_clauses();
+        //self.print_clauses();
         if self.clauses_list.is_empty() {
             return self.yield_model();
         }
@@ -241,50 +241,42 @@ impl<H: DecideHeuristic> Cdcl<H> {
                     let mut to_remove_from_occur: Vec<usize> = vec![];
                     for &c_ind in clauses_to_watch.iter() {
                         //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
-                        match self.clauses_list[c_ind].watch(
-                            current.negate(),
-                            &model,
-                            self.decision_level,
-                        ) {
-                            // não encontrou unidade
-                            Watched(new_watched) => {
-                                // Adiciona a cláusula atual a lista de ocorrências do novo literal vigiado
+                        match self.clauses_list[c_ind].watch(current.negate(), &model) {
+                            Watcher::Satisfied(satisfactor) => {
+                                if current.negate() != satisfactor {
+                                    // Se entrou aqui, o ponteiro andou e então viu que a cláusula foi satisfeita
+
+                                    // Como o ponteiro andou, remove a cláusula da lista de ocorrências do current.negate()
+                                    to_remove_from_occur.push(c_ind);
+
+                                    // Como satisfactor foi encontrado, agora, coloque c_ind na lista de ocorrências de satisfactor
+                                    occur_lists.add_clause_to_lit(c_ind, satisfactor);
+                                }
+                                // Se o satisfactor é o current.negate(), então a cláusula já estava satisfeita e nada deve ser feito
+                            }
+                            Watcher::Unit(to_prop) => {
+                                // Unidade encontrada, adicione ao modelo e agende para ser propagado
+                                self.unassigned.remove(&to_prop.variable);
+                                to_propagate.push_back(to_prop);
+                                Cdcl::<H>::model_insert_static(
+                                    &mut model,
+                                    to_prop,
+                                    Some(c_ind),
+                                    self.decision_level,
+                                );
+                            }
+                            Watcher::Watched(new_watched) => {
+                                // Não encontrou unidade e nem cláusula satisfeita, mas o ponteiro que estava em current.negate() andou
                                 occur_lists.add_clause_to_lit(c_ind, new_watched);
                                 to_remove_from_occur.push(c_ind);
                             }
-                            OnlyOneRemaining(to_prop) => {
-                                // checa se to_prop é conflitante com o modelo
-                                match Cdcl::<H>::model_opinion(&model, to_prop) {
-                                    Some(false) => {
-                                        // absoluto vivo código
-                                        // last standing é falseado pelo modelo, então um conflito foi encontrado
-                                        self.conflicting = Some(self.clauses_list[c_ind].clone());
-                                        self.model = model;
-                                        occur_lists.give_to(clauses_to_watch, current.negate());
-                                        return true;
-                                    }
-                                    Some(true) => {
-                                        self.clauses_list[c_ind].set_satisfied(self.decision_level);
-                                        to_remove_from_occur.push(c_ind); // ???? checking
-                                    }
-                                    None => {
-                                        self.unassigned.remove(&to_prop.variable);
-                                        to_propagate.push_back(to_prop);
-                                        Cdcl::<H>::model_insert_static(
-                                            &mut model,
-                                            to_prop,
-                                            Some(c_ind),
-                                            self.decision_level,
-                                        );
-                                    }
-                                }
+                            Watcher::Conflict => {
+                                // Conflito encontrado
+                                self.conflicting = Some(self.clauses_list[c_ind].clone());
+                                self.model = model;
+                                occur_lists.give_to(clauses_to_watch, current.negate());
+                                return true;
                             }
-                            Conflict => {
-                                /*self.conflicting = Some(self.clauses_list[c_ind].clone());
-                                return true;*/
-                                panic!("Isso devia ser código morto");
-                            }
-                            AlreadyWatched => (),
                         }
                     }
                     // Atualiza a lista de ocorrência que foi iterada recentemente para retirar as cláusulas que não são mais vigiadas
@@ -293,10 +285,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 }
             };
         }
-    }
-
-    fn model_opinion(model: &[Option<Assignment>], lit: Literal) -> Option<bool> {
-        model[lit.variable].map(|b| b.polarity == lit.polarity)
     }
 
     /// Returns what decision level needs to be decremented
@@ -395,20 +383,20 @@ impl<H: DecideHeuristic> Cdcl<H> {
     fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
         // ? Coloca as negações de todos os literais de dl mais baixo em uma fila para
         // ? serem propagados e deduzirem o literal de maior dl na cláusula aprendida
-        println!("Backjump to level {}", b);
+        //println!("Backjump to level {}", b);
         //println!("Learnt clause: {:?}", learnt_clause);
         // Remove todas as atribuições com dl maior que b do modelo
         for i in 1..(self.number_of_atoms + 1) {
             if self.model[i].is_none() {
-                eprintln!("{i} is unset");
+                //eprintln!("{i} is unset");
                 continue;
             }
             let ass = self.model[i].unwrap();
             if ass.dl <= b {
-                eprintln!("{i} has dl={}, let it be.", ass.dl);
+                //eprintln!("{i} has dl={}, let it be.", ass.dl);
                 continue;
             }
-            eprintln!("{i} has dl={}, unassign it", ass.dl);
+            //eprintln!("{i} has dl={}, unassign it", ass.dl);
             // Unassign it from model
             self.model[i] = None;
             // Add to hashmap of unassigned
