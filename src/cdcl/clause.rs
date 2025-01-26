@@ -153,9 +153,9 @@ impl Clause {
             .cloned()
             .collect();
         let second: Vec<Literal> = other.literals.clone();
-        println!("Resolving on pivot {:?}: ", &pivot);
-        println!("{:?}", &self.literals);
-        println!("{:?}", &second);
+        //println!("Resolving on pivot {:?}: ", &pivot);
+        //println!("{:?}", &self.literals);
+        //println!("{:?}", &second);
         let mut seen: HashSet<Literal> = first.iter().cloned().collect();
         seen.remove(&pivot);
         seen.remove(&pivot.negate());
@@ -178,10 +178,4 @@ impl Clause {
     pub fn set_satisfied(&mut self, decision_level: usize) {
         self.satisfied_on_dl = Some(decision_level);
     }
-}
-
-#[derive(Clone, Debug)]
-enum ClauseStates {
-    Satisfied(Literal),
-    Unresolved,
 }
