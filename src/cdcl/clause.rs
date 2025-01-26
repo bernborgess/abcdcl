@@ -8,6 +8,8 @@ pub enum Watcher {
     Conflict,
 }
 
+use crate::cdcl::utils::print_model;
+
 use super::{assignment::Assignment, literal::Literal};
 
 #[derive(Clone)]
@@ -58,6 +60,9 @@ impl Clause {
             if let Some(true) = self.model_agreement(model, val_0) {
                 Watcher::Satisfied(lit)
             } else if let Some(true) = self.model_agreement(model, val_0) {
+                // Aqui o Satisfied retorna lit mesmo se o literal que satisfaz é o outro literal vigiado
+                // Isso serve pra avisar o propagate que essa cláusula já estava satisfeita
+                // E portanto os ponteiros não andaram
                 return Watcher::Satisfied(lit);
             } else {
                 let pointer_to_lit = if val_0 == lit {
@@ -67,7 +72,7 @@ impl Clause {
                 } else {
                     eprintln!("Clause: {:?}", &self);
                     eprintln!("lit: {lit}");
-                    eprintln!("model: {:?}", model);
+                    print_model(model);
                     panic!("The literal {:?} is not being watched here", lit);
                 };
                 self.next(pointer_to_lit, model)
