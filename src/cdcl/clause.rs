@@ -62,10 +62,14 @@ impl Clause {
             //devia ser código morto
             return OnlyOneRemaining(lit);
         }
-        let opt_ind: Option<usize> = if self.point(0) == lit {
-            //seleciona o ponteiro que vai ser movido
+        // Um dos ponteiros está estourado, cláusula já foi vigiada
+        let opt_ind: Option<usize> = if self.point(0).is_none() || self.point(1).is_none() {
+            None
+        }
+        //seleciona o ponteiro que vai ser movido
+        else if self.point(0).unwrap() == lit {
             Some(0)
-        } else if self.point(1) == lit {
+        } else if self.point(1).unwrap() == lit {
             Some(1)
         } else {
             //se nenhum dos ponteiros aponta para lit, essa cláusula já foi vigiado e lit está para trás
@@ -116,11 +120,8 @@ impl Clause {
     }
 
     //retorna o valor apontado pelo ponteiro i
-    fn point(&self, i: usize) -> Literal {
-        *self
-            .literals
-            .get(self.watch_ptr[i])
-            .expect("Tentou ler a posição de um ponteiro que já passou do vector")
+    fn point(&self, i: usize) -> Option<Literal> {
+        self.literals.get(self.watch_ptr[i]).copied()
     }
 
     fn next(&mut self, i: usize) -> Watcher {
@@ -138,9 +139,9 @@ impl Clause {
 
         // caso ponteiro ultrapasse o array, retorna o literal que sobrou no outro ponteiro para ser propagado
         if self.watch_ptr[i] == self.literals.len() {
-            OnlyOneRemaining(self.point((i + 1) % 2))
+            OnlyOneRemaining(self.point((i + 1) % 2).unwrap())
         } else {
-            Watched(self.point(i)) // retorna o novo literal vigiado
+            Watched(self.point(i).unwrap()) // retorna o novo literal vigiado
         }
     }
 
