@@ -321,30 +321,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
         model[lit.variable].map(|b| b.polarity == lit.polarity)
     }
 
-    // É essencial que ao analizar o conflito, o primeiro elemento de da fila de propagação
-    // Seja o literal que está sendo vigiado
-    fn fix_propagate_order(&mut self, to_propagate: &mut Queue) {
-        let learnt: &Clause = self.clauses_list.last().unwrap();
-        let lit1: Literal = learnt.literals[0];
-        let lit2: Literal = learnt.literals[1];
-        let pos: usize;
-        //println!("to_propagate: {:?}", &to_propagate);
-        if self.literal_has_max_dl(lit1) {
-            pos = to_propagate
-                .iter()
-                .position(|&x| x.variable == lit2.variable)
-                .expect("This should be here");
-        } else if self.literal_has_max_dl(lit2) {
-            pos = to_propagate
-                .iter()
-                .position(|&x| x.variable == lit1.variable)
-                .expect("This should be here");
-        } else {
-            panic!("I was sure the highest decision level would always be watched");
-        }
-        to_propagate.swap(0, pos);
-    }
-
     /// Returns what decision level needs to be decremented
     fn analyze_conflict(&self) -> Option<(usize, Clause)> {
         if self.decision_level == 0 {
@@ -437,17 +413,9 @@ impl<H: DecideHeuristic> Cdcl<H> {
         // Coloca as negações de todos os literais de dl mais baixo em uma fila para
         // serem propagados e deduzirem o literal de maior dl na cláusula aprendida
         println!("Backjumping to level {}", b);
-        let mut to_propagate: Queue = Queue::new();
-        for &lit in learnt_clause.literals.iter() {
-            if !self.literal_has_max_dl(lit) {
-                to_propagate.push_front(lit.negate());
-            }
-        }
-
+        let to_propagate: Queue = Queue::from([learnt_clause.literals[1].negate()]);
         //adiciona a cláusula aprendida ao solver
         self.add_clause(learnt_clause.literals);
-
-        self.fix_propagate_order(&mut to_propagate);
 
         // Remove todos as atribuições com dl maior que b do modelo
         for asg in self.model.iter_mut().skip(1) {
@@ -634,7 +602,7 @@ mod tests {
         mock_decide_heuristic
     }
 
-    /*#[test]
+    #[test]
     fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0, true);
         assert_eq!(result, SAT(vec![]));
@@ -755,7 +723,7 @@ mod tests {
             SAT(model) => assert_eq!(model, vec![true, false, true, false, false, true]),
             UNSAT => panic!("backtrack small case fail"),
         }
-    }*/
+    }
 
     #[test]
     fn check_return_level() {
