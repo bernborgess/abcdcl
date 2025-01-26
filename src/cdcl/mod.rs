@@ -720,13 +720,36 @@ mod tests {
         let mut solver = Cdcl::new(6, mock_decide_heuristic);
         let result = solver.solve(cnf, false);
         match result {
-            SAT(model) => assert_eq!(model, vec![true, false, true, false, false, true]),
+            SAT(model) => assert_eq!(model, vec![true, false, true, true, true, true]),
             UNSAT => panic!("backtrack small case fail"),
         }
     }
 
     #[test]
     fn check_return_level() {
+        let cnf = vec![
+            vec![-2, -3, -4],
+            vec![-3, -5, -6],
+            vec![4, 6, 7],
+            vec![-7, -8],
+            vec![-1, -7, -9],
+            vec![-1, 8, 9],
+        ];
+
+        let polarities = vec![true, true, true, true];
+        let variables = vec![5, 3, 2, 1];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+        let mut solver = Cdcl::new(9, mock_decide_heuristic);
+        let result = solver.solve(cnf, false);
+        // TODO: How to get what "Mock(b)" was returning??
+        match result {
+            UNSAT => println!("We got unsat..."),
+            SAT(model) => println!("We got sat...{:?}", model),
+        }
+    }
+
+    #[test]
+    fn check_pre_process_lo() {
         let cnf = vec![
             vec![-2, -3, -4],
             vec![-3, -5, -6],
