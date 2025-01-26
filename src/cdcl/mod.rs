@@ -395,12 +395,17 @@ impl<H: DecideHeuristic> Cdcl<H> {
             return;
         }
 
-        // Update occurlist
-        let lit1 = literals[0];
-        let lit2 = literals[1];
+        if literals.len() < 2 {
+            let the_lit = literals[0];
+            self.occur_lists.add_clause_to_lit(new_clause_id, the_lit);
+        } else {
+            // Update occurlist
+            let lit1 = literals[0];
+            let lit2 = literals[1];
 
-        self.occur_lists.add_clause_to_lit(new_clause_id, lit1);
-        self.occur_lists.add_clause_to_lit(new_clause_id, lit2);
+            self.occur_lists.add_clause_to_lit(new_clause_id, lit1);
+            self.occur_lists.add_clause_to_lit(new_clause_id, lit2);
+        }
 
         // Add clause to problem
         let learnt_clause = Clause::new(literals);
@@ -410,21 +415,41 @@ impl<H: DecideHeuristic> Cdcl<H> {
     //muda para None a atribuição de variáveis com decision level maior que b
     //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
     fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
-        // Coloca as negações de todos os literais de dl mais baixo em uma fila para
-        // serem propagados e deduzirem o literal de maior dl na cláusula aprendida
-        println!("Backjumping to level {}", b);
-        let to_propagate: Queue = Queue::from([learnt_clause.literals[1].negate()]);
+        // ? Coloca as negações de todos os literais de dl mais baixo em uma fila para
+        // ? serem propagados e deduzirem o literal de maior dl na cláusula aprendida
+        println!("Backjump to level {}", b);
+
+        // Remove todas as atribuições com dl maior que b do modelo
+        for i in 1..(self.number_of_atoms + 1) {
+            if self.model[i].is_none() {
+                eprintln!("{i} is unset");
+                continue;
+            }
+            let ass = self.model[i].unwrap();
+            if ass.dl <= b {
+                eprintln!("{i} has dl={}, let it be.", ass.dl);
+                continue;
+            }
+            eprintln!("{i} has dl={}, unassign it", ass.dl);
+            // Unassign it from model
+            self.model[i] = None;
+            // Add to hashmap of unassigned
+            self.unassigned.insert(i);
+        }
+
+        let unset_lit: Literal = learnt_clause
+            .literals
+            .iter()
+            .find(|lit| self.model[lit.variable].is_none())
+            .cloned()
+            .expect("No literal was learned");
+
+        let learnt_lit: Literal = unset_lit.negate();
+
+        let to_propagate: Queue = Queue::from([learnt_lit]);
+
         //adiciona a cláusula aprendida ao solver
         self.add_clause(learnt_clause.literals);
-
-        // Remove todos as atribuições com dl maior que b do modelo
-        for asg in self.model.iter_mut().skip(1) {
-            if let Some(asgnmt) = asg {
-                if asgnmt.dl > b {
-                    *asg = None;
-                }
-            }
-        }
 
         // Torna b o decision level atual
         self.decision_level = b;
@@ -559,8 +584,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::mock;
-
     use super::*;
 
     #[cfg(test)]
