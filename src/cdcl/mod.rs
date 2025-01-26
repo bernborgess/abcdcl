@@ -108,28 +108,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
                     None => return UNSAT,
                     Some((b, learnt_clause)) => {
                         to_propagate = Some(self.backjump(b, learnt_clause));
-                        /*// Add learnt clause to clause list
-                        self.add_clause(learnt_clause.literals.clone());
-                        // Apply backtrack of dl b
-                        self.backtrack(b);
-                        // Set new dl to b
-                        self.decision_level = b;
-                        // Add negation of the unset literal in learnt_clause to the model
-                        let unset_literal = learnt_clause
-                            .literals
-                            .iter()
-                            .find(|lit| self.model[lit.variable].is_none())
-                            .cloned()
-                            .expect("No unset literal was found!");
-
-                        let learned_literal = unset_literal.negate();
-                        let antecedent_id = self.clauses_list.len() - 1;
-                        self.model_insert(learned_literal, Some(antecedent_id));
-
-                        // Add it to propagate too
-                        to_propagate
-                            .get_or_insert_with(VecDeque::new)
-                            .push_back(learned_literal);*/
                     }
                 }
             }
@@ -418,7 +396,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         // ? Coloca as negações de todos os literais de dl mais baixo em uma fila para
         // ? serem propagados e deduzirem o literal de maior dl na cláusula aprendida
         println!("Backjump to level {}", b);
-
+        //println!("Learnt clause: {:?}", learnt_clause);
         // Remove todas as atribuições com dl maior que b do modelo
         for i in 1..(self.number_of_atoms + 1) {
             if self.model[i].is_none() {
@@ -444,15 +422,19 @@ impl<H: DecideHeuristic> Cdcl<H> {
             .cloned()
             .expect("No literal was learned");
 
-        let learnt_lit: Literal = unset_lit.negate();
-
-        let to_propagate: Queue = Queue::from([learnt_lit]);
+        //let learnt_lit: Literal = unset_lit.negate();
+        //println!("unset lit {:?}", &unset_lit);
+        let to_propagate: Queue = Queue::from([unset_lit]);
 
         //adiciona a cláusula aprendida ao solver
+        let new_clause_index: usize = self.clauses_list.len();
         self.add_clause(learnt_clause.literals);
 
         // Torna b o decision level atual
         self.decision_level = b;
+
+        //insere o literal aprendido no modelo
+        self.model_insert(unset_lit, Some(new_clause_index));
 
         // Limpa o campo de cláusula de conflito
         self.conflicting = None;
@@ -662,12 +644,13 @@ mod tests {
     fn two_cnf_is_unsat() {
         let cnf = vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]];
         // TODO: Fix the backtrack to call this test...
-        let result = run_cdcl(cnf, 2, true);
-        //let result = UNSAT;
-        match result {
-            UNSAT => (),
-            _ => panic!("two cnf is unsat fail"),
-        }
+        let polarities = vec![false];
+        let variables = vec![2];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+
+        let mut solver = Cdcl::new(2, mock_decide_heuristic);
+        let result = solver.solve(cnf, false);
+        assert_eq!(result, UNSAT);
     }
 
     #[test]
