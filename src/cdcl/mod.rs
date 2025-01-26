@@ -44,9 +44,10 @@ pub fn run_cdcl(
     cnf: Vec<Vec<i64>>,
     number_of_atoms: usize,
     pre_process_switch: bool,
+    multiple_pre_process: bool,
 ) -> CdclResult {
     let mut solver = Cdcl::new(number_of_atoms, RandomDecideHeuristic {}); // Uses rust RNG
-    solver.solve(cnf, pre_process_switch)
+    solver.solve(cnf, pre_process_switch, multiple_pre_process)
 }
 
 #[derive(Clone, Debug)]
@@ -90,14 +91,40 @@ impl<H: DecideHeuristic> Cdcl<H> {
         }
     }
 
-    pub fn solve(&mut self, cnf: Vec<Vec<i64>>, pre_process_switch: bool) -> CdclResult {
+    pub fn solve(
+        &mut self,
+        cnf: Vec<Vec<i64>>,
+        pre_process_switch: bool,
+        multiple_pre_process: bool,
+    ) -> CdclResult {
+        let mut decided: HashSet<Literal> = HashSet::new();
         let mut to_propagate: Option<Queue> = if pre_process_switch {
-            self.pre_process(cnf) //aplica a regra PURE e outros truques de pré-processamento
+            //aplica a regra PURE e remove cláusulas unitárias
+            let mut filtered_cnf = self.pre_process(cnf, &mut decided, true);
+            if multiple_pre_process {
+                let mut decided_before: usize = 0;
+                let mut decided_after: usize = decided.len();
+                while decided_before != decided_after {
+                    decided_before = decided_after;
+                    filtered_cnf = match filtered_cnf {
+                        Some(cnf) => self.pre_process(cnf, &mut decided, false),
+                        None => return UNSAT,
+                    };
+                    decided_after = decided.len();
+                }
+            }
+            match &filtered_cnf.as_deref() {
+                None => return UNSAT,
+                Some([]) => return self.yield_model(),
+                _ => (),
+            }
+            self.clauses_list = Clause::new_vec(filtered_cnf.unwrap());
+            Some(decided.into_iter().collect())
         } else {
             self.clauses_list = Clause::new_vec(cnf);
             None
         };
-        self.print_clauses();
+        //self.print_clauses();
         if self.clauses_list.is_empty() {
             return self.yield_model();
         }
@@ -144,16 +171,25 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     // Remove duplicatas, realiza atribuições triviais (PURE e cláusulas unitárias), remove cláusulas satisfeitas
     // retorna vetor de Literal para propagar e constrói as cláusulas do solver
-    pub fn pre_process(&mut self, mut cnf: Vec<Vec<i64>>) -> Option<Queue> {
-        let mut decided: Queue = VecDeque::new();
+    pub fn pre_process(
+        &mut self,
+        mut cnf: Vec<Vec<i64>>,
+        decided: &mut HashSet<Literal>,
+        first_run: bool,
+    ) -> Option<Vec<Vec<i64>>> {
+        //let mut decided: Queue = VecDeque::new();
+        if cnf.is_empty() {
+            return Some(cnf);
+        }
         let mut clauses_to_remove: HashSet<usize> = HashSet::new();
+        //println!("decided: {:?}", &decided);
         let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.number_of_atoms + 1]; // 1 campo extra para indexar em base 1
         let mut full_occur_lists = OccurLists::new(self.number_of_atoms + 1); // 1 campo extra para indexar em base 1
         for (clause_ind, clause) in cnf.iter_mut().enumerate() {
             if clause.len() == 1 {
                 // se essa cláusula só tem um literal, então só atribuições que tornam esse literal verdadeiro podem ser modelos
                 let lit = Literal::new(&clause[0]);
-                decided.push_back(lit);
+                decided.insert(lit);
                 clauses_to_remove.insert(clause_ind);
             }
             // Vou supor que não vão existir cláusulas triviais (ex: 1 -1 2 -4 0) em nossos casos de teste pelo bem da minha sanidade
@@ -186,19 +222,23 @@ impl<H: DecideHeuristic> Cdcl<H> {
         for (index, status) in seen_status.iter().enumerate().skip(1) {
             let lit = Literal::new(&(index as i64));
             //check
-            match status {
-                Seen::Unseen => decided.push_back(lit), // se o átomo não aparece na fórmula posso atribuir o valor que eu quiser
-                Seen::Positive => decided.push_back(lit),
-                Seen::Negative => decided.push_back(lit.negate()),
-                Seen::Both => {}
-            }
+            let _ = match status {
+                // se o átomo não aparece na fórmula posso atribuir o valor que eu quiser
+                // mas só na primeira execução, ou esse átomo pode ter sido removido por uma iteração anterior
+                Seen::Unseen => {
+                    if first_run {
+                        decided.insert(lit)
+                    } else {
+                        false
+                    }
+                }
+                Seen::Positive => decided.insert(lit),
+                Seen::Negative => decided.insert(lit.negate()),
+                Seen::Both => false,
+            };
         }
 
-        self.grow_model_and_remove_clauses(&decided, &mut clauses_to_remove, &full_occur_lists, cnf)
-            .map(|filtered_cnf| {
-                self.clauses_list = Clause::new_vec(filtered_cnf);
-                decided
-            })
+        self.grow_model_and_remove_clauses(decided, &mut clauses_to_remove, &full_occur_lists, cnf)
     }
 
     pub fn build_occur_lists(&mut self) {
@@ -213,7 +253,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     fn grow_model_and_remove_clauses(
         &mut self,
-        decided: &Queue,
+        decided: &HashSet<Literal>,
         clauses_to_remove: &mut HashSet<usize>,
         full_occur_lists: &OccurLists,
         mut cnf: Vec<Vec<i64>>,
@@ -228,12 +268,14 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 clauses_to_remove.insert(clause_ind);
             }
         }
+        //println!("clauses_to_remove: {:?}", &clauses_to_remove);
         cnf = cnf
             .into_iter()
             .enumerate()
             .filter(|(i, _)| !clauses_to_remove.contains(i))
             .map(|(_, item)| item)
             .collect();
+        println!("cnf after pre_process: {:?}", &cnf);
         Some(cnf)
     }
 
@@ -559,8 +601,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::mock;
-
+    //use rand::rngs::mock;
     use super::*;
 
     #[cfg(test)]
@@ -604,14 +645,14 @@ mod tests {
 
     #[test]
     fn empty_cnf_is_sat() {
-        let result = run_cdcl(vec![], 0, true);
+        let result = run_cdcl(vec![], 0, true, false);
         assert_eq!(result, SAT(vec![]));
     }
 
     #[test]
     fn single_cnf_is_sat() {
         let cnf = vec![vec![1]];
-        let result = run_cdcl(cnf, 1, true);
+        let result = run_cdcl(cnf, 1, true, false);
         match result {
             SAT(assign) => {
                 assert_eq!(assign.len(), 1);
@@ -624,7 +665,7 @@ mod tests {
     #[test]
     fn two_cnf_is_sat() {
         let cnf = vec![vec![1, 2], vec![-1, -2]];
-        let result = run_cdcl(cnf, 2, true);
+        let result = run_cdcl(cnf, 2, true, false);
         match result {
             SAT(assign) => {
                 assert_eq!(assign.len(), 2);
@@ -639,7 +680,7 @@ mod tests {
     fn two_cnf_is_unsat() {
         let cnf = vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]];
         // TODO: Fix the backtrack to call this test...
-        let result = run_cdcl(cnf, 2, true);
+        let result = run_cdcl(cnf, 2, true, false);
         //let result = UNSAT;
         match result {
             UNSAT => (),
@@ -663,7 +704,8 @@ mod tests {
             vec![-4],
             vec![1, 2, 3],
         ];
-        solver.pre_process(original_cnf);
+        let mut decided: HashSet<Literal> = HashSet::new();
+        solver.pre_process(original_cnf, &mut decided, true);
         assert_eq!(0, solver.clauses_list.len())
     }
 
@@ -694,7 +736,8 @@ mod tests {
             vec![-3, -4, -6],
             vec![-3, 4, -5],
         ];
-        solver.pre_process(original_cnf);
+        let mut decided: HashSet<Literal> = HashSet::new();
+        solver.pre_process(original_cnf, &mut decided, true);
         for (i, c) in solver.clauses_list.iter().enumerate() {
             for (j, &lit) in c.literals.iter().enumerate() {
                 assert_eq!(lit, Literal::new(&target_cnf[i][j]));
@@ -718,7 +761,7 @@ mod tests {
         let mock_decide_heuristic = setup_mock(polarities, variables);
 
         let mut solver = Cdcl::new(6, mock_decide_heuristic);
-        let result = solver.solve(cnf, false);
+        let result = solver.solve(cnf, false, false);
         match result {
             SAT(model) => assert_eq!(model, vec![true, false, true, true, true, true]),
             UNSAT => panic!("backtrack small case fail"),
@@ -740,7 +783,7 @@ mod tests {
         let variables = vec![5, 3, 2, 1];
         let mock_decide_heuristic = setup_mock(polarities, variables);
         let mut solver = Cdcl::new(9, mock_decide_heuristic);
-        let result = solver.solve(cnf, false);
+        let result = solver.solve(cnf, false, false);
         // TODO: How to get what "Mock(b)" was returning??
         match result {
             UNSAT => println!("We got unsat..."),
@@ -749,7 +792,9 @@ mod tests {
     }
 
     #[test]
-    fn check_pre_process_lo() {
+    fn check_pre_process_loop() {
+        // Remove -1,-2,-3 e -5 via Pure
+        // Depois remove 4,6 e -8 via Pure
         let cnf = vec![
             vec![-2, -3, -4],
             vec![-3, -5, -6],
@@ -758,16 +803,34 @@ mod tests {
             vec![-1, -7, -9],
             vec![-1, 8, 9],
         ];
-
-        let polarities = vec![true, true, true, true];
-        let variables = vec![5, 3, 2, 1];
-        let mock_decide_heuristic = setup_mock(polarities, variables);
-        let mut solver = Cdcl::new(9, mock_decide_heuristic);
-        let result = solver.solve(cnf, false);
-        // TODO: How to get what "Mock(b)" was returning??
-        match result {
-            UNSAT => println!("We got unsat..."),
-            SAT(model) => println!("We got sat...{:?}", model),
+        let mock_decide_heuristic: RandomDecideHeuristic = RandomDecideHeuristic {};
+        let mut solver: Cdcl<RandomDecideHeuristic> = Cdcl::new(9, mock_decide_heuristic);
+        let mut decided: HashSet<Literal> = HashSet::new();
+        let mut decided_before: usize = 0;
+        //aplica a regra PURE e remove cláusulas unitárias
+        let mut filtered_cnf = solver.pre_process(cnf, &mut decided, true);
+        let mut decided_after: usize = decided.len();
+        while decided_before != decided_after {
+            decided_before = decided_after;
+            filtered_cnf = match filtered_cnf {
+                Some(cnf) => solver.pre_process(cnf, &mut decided, false),
+                None => panic!("Unsat 0"),
+            };
+            decided_after = decided.len();
+        }
+        let sat_model = match &filtered_cnf.as_deref() {
+            None => panic!("Unsat 1"),
+            Some([]) => solver.yield_model(),
+            _ => panic!("Should have been satisfied in this test"),
+        };
+        match sat_model {
+            SAT(model) => {
+                assert_eq!(
+                    model,
+                    vec![false, false, false, true, false, true, false, false, false]
+                );
+            }
+            UNSAT => panic!("Unsat 2"),
         }
     }
 }
