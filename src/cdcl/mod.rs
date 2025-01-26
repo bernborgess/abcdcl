@@ -10,7 +10,7 @@ use rand::Rng;
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
 use std::mem;
-use utils::{print_model, remove_clauses_from_lit};
+use utils::{print_decision_levels, print_model, remove_clauses_from_lit};
 pub mod assignment;
 pub mod clause;
 pub mod literal;
@@ -262,10 +262,10 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                     // Se o satisfactor é o current.negate(), então a cláusula já estava satisfeita e nada deve ser feito
                                 }
                                 Watcher::Unit(to_prop, last_seen) => {
-                                    if current.negate() != last_seen {
+                                    /*if current.negate() != last_seen {
                                         (*occur_lists).add_clause_to_lit(c_ind, last_seen);
                                         to_remove_from_occur.push(c_ind);
-                                    }
+                                    }*/
                                     // Unidade encontrada, adicione ao modelo e agende para ser propagado
                                     self.unassigned.remove(&to_prop.variable);
                                     to_propagate.push_back(to_prop);
@@ -306,6 +306,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             .expect("Conflict was not defined!")
             .clone();
         println!("Conflict: {:?}", &learnt);
+        //print_decision_levels(&learnt, &self.model);
 
         // literals with current decision level
         let mut literals: Queue = learnt
@@ -606,7 +607,7 @@ mod tests {
 
         mock_decide_heuristic
     }
-    /*/
+
     #[test]
     fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0, true);
@@ -752,7 +753,7 @@ mod tests {
             UNSAT => println!("We got unsat..."),
             SAT(model) => println!("We got sat...{:?}", model),
         }
-    }*/
+    }
 
     #[test]
     fn check_dubois20() {
