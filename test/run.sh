@@ -31,8 +31,8 @@ for bm in "${benchmarks[@]}"; do
         echo -e "\n\nRunning ${bm} benchmark"
         for file in ${bm}*.cnf; do
             # echo "Running $file..."
-            abcdclt_outfile="./out/${file}.output"
-            cargo run -q -- "$file" > "$abcdclt_outfile" 2>error.log
+            abcdcl_outfile="./out/${file}.output"
+            cargo run -q -- "$file" > "$abcdcl_outfile" 2>error.log
             if [ $? -ne 0 ]; then
                 echo "Error: cargo run failed for $file. Stopping script."
                 echo -e "\n====================================================\n"
@@ -40,7 +40,7 @@ for bm in "${benchmarks[@]}"; do
                 echo -e "\n====================================================\n"
                 exit 1
             fi
-            abcdclt_tail=$(tail "$abcdclt_outfile" -n 1)
+            abcdcl_tail=$(tail "$abcdcl_outfile" -n 1)
 
             # minisat for comparison
             minisat_outfile="./out/${file}.minisat_output"
@@ -56,11 +56,11 @@ for bm in "${benchmarks[@]}"; do
 
 
             # Check that first line is the same
-            if [ "$minisat_head" == "$abcdclt_tail" ]; then
+            if [ "$minisat_head" == "$abcdcl_tail" ]; then
                 echo -e "${GREEN_BG}PASS${GREEN} $file${RESET}"
                 pass_count=$((pass_count + 1))
             else
-                echo -e "${RED_BG}FAIL${RED} $file: expected $minisat_head got $abcdclt_tail${RESET}"
+                echo -e "${RED_BG}FAIL${RED} $file: expected $minisat_head got $abcdcl_tail${RESET}"
             fi
         done
     else

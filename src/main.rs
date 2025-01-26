@@ -1,4 +1,4 @@
-use abcdclt::{
+use abcdcl::{
     cdcl::{run_cdcl, CdclResult},
     parser::read_cnf,
 };
