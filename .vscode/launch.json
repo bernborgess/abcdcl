@@ -4,14 +4,14 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'abcdclt'",
+            "name": "Debug executable 'abcdcl'",
             "cargo": {
                 "args": [
                     "build",
                     "-q",
                 ],
                 "filter": {
-                    "name": "abcdclt",
+                    "name": "abcdcl",
                     "kind": "bin"
                 }
             },
@@ -23,17 +23,17 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'abcdclt'",
+            "name": "Debug unit tests in library 'abcdcl'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=abcdclt",
+                    "--package=abcdcl",
                     "check_return_level",
                 ],
                 "filter": {
-                    "name": "abcdclt",
+                    "name": "abcdcl",
                     "kind": "lib"
                 }
             },

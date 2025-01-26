@@ -321,30 +321,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
         model[lit.variable].map(|b| b.polarity == lit.polarity)
     }
 
-    // É essencial que ao analizar o conflito, o primeiro elemento de da fila de propagação
-    // Seja o literal que está sendo vigiado
-    fn fix_propagate_order(&mut self, to_propagate: &mut Queue) {
-        let learnt: &Clause = self.clauses_list.last().unwrap();
-        let lit1: Literal = learnt.literals[0];
-        let lit2: Literal = learnt.literals[1];
-        let pos: usize;
-        //println!("to_propagate: {:?}", &to_propagate);
-        if self.literal_has_max_dl(lit1) {
-            pos = to_propagate
-                .iter()
-                .position(|&x| x.variable == lit2.variable)
-                .expect("This should be here");
-        } else if self.literal_has_max_dl(lit2) {
-            pos = to_propagate
-                .iter()
-                .position(|&x| x.variable == lit1.variable)
-                .expect("This should be here");
-        } else {
-            panic!("I was sure the highest decision level would always be watched");
-        }
-        to_propagate.swap(0, pos);
-    }
-
     /// Returns what decision level needs to be decremented
     fn analyze_conflict(&self) -> Option<(usize, Clause)> {
         if self.decision_level == 0 {
@@ -419,12 +395,17 @@ impl<H: DecideHeuristic> Cdcl<H> {
             return;
         }
 
-        // Update occurlist
-        let lit1 = literals[0];
-        let lit2 = literals[1];
+        if literals.len() < 2 {
+            let the_lit = literals[0];
+            self.occur_lists.add_clause_to_lit(new_clause_id, the_lit);
+        } else {
+            // Update occurlist
+            let lit1 = literals[0];
+            let lit2 = literals[1];
 
-        self.occur_lists.add_clause_to_lit(new_clause_id, lit1);
-        self.occur_lists.add_clause_to_lit(new_clause_id, lit2);
+            self.occur_lists.add_clause_to_lit(new_clause_id, lit1);
+            self.occur_lists.add_clause_to_lit(new_clause_id, lit2);
+        }
 
         // Add clause to problem
         let learnt_clause = Clause::new(literals);
@@ -434,29 +415,41 @@ impl<H: DecideHeuristic> Cdcl<H> {
     //muda para None a atribuição de variáveis com decision level maior que b
     //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
     fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
-        // Coloca as negações de todos os literais de dl mais baixo em uma fila para
-        // serem propagados e deduzirem o literal de maior dl na cláusula aprendida
-        println!("Backjumping to level {}", b);
-        let mut to_propagate: Queue = Queue::new();
-        for &lit in learnt_clause.literals.iter() {
-            if !self.literal_has_max_dl(lit) {
-                to_propagate.push_front(lit.negate());
+        // ? Coloca as negações de todos os literais de dl mais baixo em uma fila para
+        // ? serem propagados e deduzirem o literal de maior dl na cláusula aprendida
+        println!("Backjump to level {}", b);
+
+        // Remove todas as atribuições com dl maior que b do modelo
+        for i in 1..(self.number_of_atoms + 1) {
+            if self.model[i].is_none() {
+                eprintln!("{i} is unset");
+                continue;
             }
+            let ass = self.model[i].unwrap();
+            if ass.dl <= b {
+                eprintln!("{i} has dl={}, let it be.", ass.dl);
+                continue;
+            }
+            eprintln!("{i} has dl={}, unassign it", ass.dl);
+            // Unassign it from model
+            self.model[i] = None;
+            // Add to hashmap of unassigned
+            self.unassigned.insert(i);
         }
+
+        let unset_lit: Literal = learnt_clause
+            .literals
+            .iter()
+            .find(|lit| self.model[lit.variable].is_none())
+            .cloned()
+            .expect("No literal was learned");
+
+        let learnt_lit: Literal = unset_lit.negate();
+
+        let to_propagate: Queue = Queue::from([learnt_lit]);
 
         //adiciona a cláusula aprendida ao solver
         self.add_clause(learnt_clause.literals);
-
-        self.fix_propagate_order(&mut to_propagate);
-
-        // Remove todos as atribuições com dl maior que b do modelo
-        for asg in self.model.iter_mut().skip(1) {
-            if let Some(asgnmt) = asg {
-                if asgnmt.dl > b {
-                    *asg = None;
-                }
-            }
-        }
 
         // Torna b o decision level atual
         self.decision_level = b;
@@ -591,8 +584,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::mock;
-
     use super::*;
 
     #[cfg(test)]
@@ -634,7 +625,7 @@ mod tests {
         mock_decide_heuristic
     }
 
-    /*#[test]
+    #[test]
     fn empty_cnf_is_sat() {
         let result = run_cdcl(vec![], 0, true);
         assert_eq!(result, SAT(vec![]));
@@ -752,13 +743,36 @@ mod tests {
         let mut solver = Cdcl::new(6, mock_decide_heuristic);
         let result = solver.solve(cnf, false);
         match result {
-            SAT(model) => assert_eq!(model, vec![true, false, true, false, false, true]),
+            SAT(model) => assert_eq!(model, vec![true, false, true, true, true, true]),
             UNSAT => panic!("backtrack small case fail"),
         }
-    }*/
+    }
 
     #[test]
     fn check_return_level() {
+        let cnf = vec![
+            vec![-2, -3, -4],
+            vec![-3, -5, -6],
+            vec![4, 6, 7],
+            vec![-7, -8],
+            vec![-1, -7, -9],
+            vec![-1, 8, 9],
+        ];
+
+        let polarities = vec![true, true, true, true];
+        let variables = vec![5, 3, 2, 1];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+        let mut solver = Cdcl::new(9, mock_decide_heuristic);
+        let result = solver.solve(cnf, false);
+        // TODO: How to get what "Mock(b)" was returning??
+        match result {
+            UNSAT => println!("We got unsat..."),
+            SAT(model) => println!("We got sat...{:?}", model),
+        }
+    }
+
+    #[test]
+    fn check_pre_process_lo() {
         let cnf = vec![
             vec![-2, -3, -4],
             vec![-3, -5, -6],

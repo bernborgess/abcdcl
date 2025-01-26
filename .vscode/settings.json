@@ -1,7 +1,9 @@
 {
     "rust-analyzer.checkOnSave": true,
     "cSpell.words": [
+        "abcdcl",
         "automock",
+        "backjump",
         "mockall",
         "occurlist"
     ]
