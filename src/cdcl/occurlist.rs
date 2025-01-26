@@ -17,13 +17,13 @@ impl OccurLists {
         }
     }
 
-    pub fn take(&mut self, lit: Literal) -> Vec<usize> {
+    /*pub fn take(&mut self, lit: Literal) -> Vec<usize> {
         if lit.polarity {
             mem::take(&mut self.positive[lit.variable])
         } else {
             mem::take(&mut self.negative[lit.variable])
         }
-    }
+    }*/
 
     pub fn give_to(&mut self, clause_lists: Vec<usize>, lit: Literal) {
         if lit.polarity {
@@ -51,5 +51,13 @@ impl OccurLists {
 
     pub fn add_clause_to_lit(&mut self, clause_id: usize, lit: Literal) {
         self.get_mut(lit).push(clause_id);
+    }
+}
+
+pub unsafe fn raw_pointer_to(occur_lists: *mut OccurLists, lit: Literal) -> *mut Vec<usize> {
+    if lit.polarity {
+        &mut (*occur_lists).positive[lit.variable]
+    } else {
+        &mut (*occur_lists).negative[lit.variable]
     }
 }

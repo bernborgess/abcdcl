@@ -3,12 +3,11 @@ use clause::{Clause, Watcher::*};
 use literal::Literal;
 use mockall::predicate::*;
 use mockall::*;
-use occurlist::OccurLists;
+use occurlist::{raw_pointer_to, OccurLists};
 use rand::prelude::IteratorRandom;
 use rand::Rng;
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
-use std::mem;
 use utils::{print_model, remove_clauses_from_lit};
 pub mod assignment;
 pub mod clause;
@@ -239,81 +238,88 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     pub fn propagate_gives_conflict(&mut self, to_propagate: &mut Option<Queue>) -> bool {
         //arranco o modelo do solver para resolver conflitos com o borrow checker
-        let mut model: Vec<Option<Assignment>> = mem::take(&mut self.model);
         let occur_lists: &mut OccurLists = &mut self.occur_lists;
         let to_propagate: Option<Queue> = to_propagate.take();
         //println!("trivial_or_decided: {:?}", &trivial_or_decided);
         let mut to_propagate: Queue = to_propagate.unwrap_or_default();
-        loop {
-            //print_model(&model);
-            match to_propagate.pop_front() {
-                None => {
-                    //a fila está vazia, não tem nada para propagar, então retorno sem acusar conflito
-                    self.model = model;
-                    return false;
-                }
-                Some(current) => {
-                    //println!("Propagating {:?}", &current);
-                    let mut clauses_to_watch: Vec<usize> = occur_lists.take(current.negate());
-                    /*println!(
-                        "occur_list[{:?}] = {:?}",
-                        current.negate(),
-                        &clauses_to_watch
-                    );*/
-                    let mut to_remove_from_occur: Vec<usize> = vec![];
-                    for &c_ind in clauses_to_watch.iter() {
-                        //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
-                        match self.clauses_list[c_ind].watch(
+        unsafe {
+            let model: *mut Vec<Option<Assignment>> = &mut self.model;
+            let occur_lists: *mut OccurLists = occur_lists;
+            loop {
+                //print_model(&model);
+                match to_propagate.pop_front() {
+                    None => {
+                        //a fila está vazia, não tem nada para propagar, então retorno sem acusar conflito
+                        //self.model = model;
+                        return false;
+                    }
+                    Some(current) => {
+                        //println!("Propagating {:?}", &current);
+                        let clauses_to_watch: *mut Vec<usize> =
+                            raw_pointer_to(occur_lists, current.negate());
+                        /*println!(
+                            "occur_list[{:?}] = {:?}",
                             current.negate(),
-                            &model,
-                            self.decision_level,
-                        ) {
-                            // não encontrou unidade
-                            Watched(new_watched) => {
-                                // Adiciona a cláusula atual a lista de ocorrências do novo literal vigiado
-                                occur_lists.add_clause_to_lit(c_ind, new_watched);
-                                to_remove_from_occur.push(c_ind);
-                            }
-                            OnlyOneRemaining(to_prop) => {
-                                // checa se to_prop é conflitante com o modelo
-                                match Cdcl::<H>::model_opinion(&model, to_prop) {
-                                    Some(false) => {
-                                        // absoluto vivo código
-                                        // last standing é falseado pelo modelo, então um conflito foi encontrado
-                                        self.conflicting = Some(self.clauses_list[c_ind].clone());
-                                        self.model = model;
-                                        occur_lists.give_to(clauses_to_watch, current.negate());
-                                        return true;
-                                    }
-                                    Some(true) => {
-                                        self.clauses_list[c_ind].set_satisfied(self.decision_level);
-                                        to_remove_from_occur.push(c_ind); // ???? checking
-                                    }
-                                    None => {
-                                        self.unassigned.remove(&to_prop.variable);
-                                        to_propagate.push_back(to_prop);
-                                        Cdcl::<H>::model_insert_static(
-                                            &mut model,
-                                            to_prop,
-                                            Some(c_ind),
-                                            self.decision_level,
-                                        );
+                            &clauses_to_watch
+                        );*/
+                        let mut to_remove_from_occur: Vec<usize> = vec![];
+                        for &c_ind in (*clauses_to_watch).iter() {
+                            //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
+                            match self.clauses_list[c_ind].watch(
+                                current.negate(),
+                                &(*model),
+                                self.decision_level,
+                            ) {
+                                // não encontrou unidade
+                                Watched(new_watched) => {
+                                    // Adiciona a cláusula atual a lista de ocorrências do novo literal vigiado
+                                    (*occur_lists).add_clause_to_lit(c_ind, new_watched);
+                                    to_remove_from_occur.push(c_ind);
+                                }
+                                OnlyOneRemaining(to_prop) => {
+                                    // checa se to_prop é conflitante com o modelo
+                                    match Cdcl::<H>::model_opinion(&(*model), to_prop) {
+                                        Some(false) => {
+                                            // absoluto vivo código
+                                            // last standing é falseado pelo modelo, então um conflito foi encontrado
+                                            self.conflicting =
+                                                Some(self.clauses_list[c_ind].clone());
+                                            //self.model = model;
+                                            //occur_lists.give_to(clauses_to_watch, current.negate());
+                                            return true;
+                                        }
+                                        Some(true) => {
+                                            self.clauses_list[c_ind]
+                                                .set_satisfied(self.decision_level);
+                                            to_remove_from_occur.push(c_ind); // ???? checking
+                                        }
+                                        None => {
+                                            self.unassigned.remove(&to_prop.variable);
+                                            to_propagate.push_back(to_prop);
+                                            /*Cdcl::<H>::model_insert_static(
+                                                &mut model,
+                                                to_prop,
+                                                Some(c_ind),
+                                                self.decision_level,
+                                            );*/
+                                            self.model_insert(to_prop, Some(c_ind));
+                                        }
                                     }
                                 }
+                                Conflict => {
+                                    /*self.conflicting = Some(self.clauses_list[c_ind].clone());
+                                    return true;*/
+                                    panic!("Isso devia ser código morto");
+                                }
+                                AlreadyWatched => (),
                             }
-                            Conflict => {
-                                /*self.conflicting = Some(self.clauses_list[c_ind].clone());
-                                return true;*/
-                                panic!("Isso devia ser código morto");
-                            }
-                            AlreadyWatched => (),
                         }
+                        // Atualiza a lista de ocorrência que foi iterada recentemente para retirar as cláusulas que não são mais vigiadas
+                        remove_clauses_from_lit(&to_remove_from_occur, &mut (*clauses_to_watch));
+                        //occur_lists.give_to(clauses_to_watch, current.negate());
                     }
-                    // Atualiza a lista de ocorrência que foi iterada recentemente para retirar as cláusulas que não são mais vigiadas
-                    remove_clauses_from_lit(&to_remove_from_occur, &mut clauses_to_watch);
-                    occur_lists.give_to(clauses_to_watch, current.negate());
-                }
-            };
+                };
+            }
         }
     }
 
@@ -412,7 +418,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
     fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
         // Coloca as negações de todos os literais de dl mais baixo em uma fila para
         // serem propagados e deduzirem o literal de maior dl na cláusula aprendida
-        println!("Backjumping to level {}", b);
+        //println!("Backjumping to level {}", b);
         let to_propagate: Queue = Queue::from([learnt_clause.literals[1].negate()]);
         //adiciona a cláusula aprendida ao solver
         self.add_clause(learnt_clause.literals);
