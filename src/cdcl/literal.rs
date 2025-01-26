@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Literal {
     pub variable: usize,
     pub polarity: bool,
@@ -29,6 +29,17 @@ impl Literal {
 
 // Implement the `Display` trait for `Literal`
 impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.polarity {
+            write!(f, "{}", self.variable)
+        } else {
+            write!(f, "¬{}", self.variable)
+        }
+    }
+}
+
+// Implement the `Display` trait for `Literal`
+impl fmt::Debug for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.polarity {
             write!(f, "{}", self.variable)

@@ -12,3 +12,10 @@ pub fn print_model(model: &[Option<Assignment>]) {
     }
     println!();
 }
+
+pub fn remove_clauses_from_lit(to_remove: &Vec<usize>, occur_list_of_lit: &mut Vec<usize>) {
+    *occur_list_of_lit = occur_list_of_lit
+        .drain(..)
+        .filter(|x| !to_remove.contains(x))
+        .collect();
+}

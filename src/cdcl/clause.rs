@@ -54,17 +54,22 @@ impl Clause {
     ) -> Watcher {
         if let Some(sats) = self.satisfied_on_dl {
             if sats <= decision_level {
-                return Watched(lit);
+                return AlreadyWatched;
             }
             self.satisfied_on_dl = None;
         }
         if self.literals.len() == 1 {
+            //devia ser código morto
             return OnlyOneRemaining(lit);
         }
-        let opt_ind: Option<usize> = if self.point(0) == lit {
-            //seleciona o ponteiro que vai ser movido
+        // Um dos ponteiros está estourado, cláusula já foi vigiada
+        let opt_ind: Option<usize> = if self.point(0).is_none() || self.point(1).is_none() {
+            None
+        }
+        //seleciona o ponteiro que vai ser movido
+        else if self.point(0).unwrap() == lit {
             Some(0)
-        } else if self.point(1) == lit {
+        } else if self.point(1).unwrap() == lit {
             Some(1)
         } else {
             //se nenhum dos ponteiros aponta para lit, essa cláusula já foi vigiado e lit está para trás
@@ -74,7 +79,7 @@ impl Clause {
             //move o ponteiro
             let mut status: Watcher = self.next(ind);
 
-            //se não encontrar uma cláusula unitária, checa o novo literal vigiado
+            //se não encontrar uma cláusula OnlyOneRemaining, checa o novo literal vigiado
             //se o novo literal vigiado for falseado pelo modelo, move o ponteiro de novo
             //se o novo literal vigiado for satisfeito pelo modelo, para de vigiar a cláusula
             let mut sat_or_unsat = self.satisfied_or_falsified(&status, model);
@@ -88,7 +93,7 @@ impl Clause {
                 Watcher::Watched(_) => {
                     match sat_or_unsat{
                         Some(true) => self.satisfied_on_dl = Some(decision_level),
-                        Some(false) => panic!("This should be impossible. The pointer should move until this turn into Unit or find a non-falsified literal"),
+                        Some(false) => panic!("This should be impossible. The pointer should move until this turn into OnlyOneRemaining or find a non-falsified literal"),
                         None => self.satisfied_on_dl = None,
                     }
                 }
@@ -115,12 +120,11 @@ impl Clause {
     }
 
     //retorna o valor apontado pelo ponteiro i
-    fn point(&self, i: usize) -> Literal {
-        self.literals[self.watch_ptr[i]]
+    fn point(&self, i: usize) -> Option<Literal> {
+        self.literals.get(self.watch_ptr[i]).copied()
     }
 
     fn next(&mut self, i: usize) -> Watcher {
-        // Se o outro ponteiro já tiver explodido, retorna conflito
         if self.watch_ptr[(i + 1) % 2] >= self.literals.len() {
             return Conflict; //Isso deve ser código morto, mas vou deixar essa linha pra detectar bug
         }
@@ -135,9 +139,9 @@ impl Clause {
 
         // caso ponteiro ultrapasse o array, retorna o literal que sobrou no outro ponteiro para ser propagado
         if self.watch_ptr[i] == self.literals.len() {
-            OnlyOneRemaining(self.point((i + 1) % 2))
+            OnlyOneRemaining(self.point((i + 1) % 2).unwrap())
         } else {
-            Watched(self.point(i)) // retorna o novo literal vigiado
+            Watched(self.point(i).unwrap()) // retorna o novo literal vigiado
         }
     }
 
