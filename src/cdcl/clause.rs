@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::fmt;
 #[derive(Debug, PartialEq)]
 pub enum Watcher {
-    Unit(Literal, Option<Literal>), // Literal diz quem propagar, option diz quem é o novo literal vigiado se houver
-    Watched(Literal),               // Literal diz quem é o novo vigiado
+    Unit(Literal),      // Literal diz quem propagar
+    Watched(Literal),   // Literal diz quem é o novo vigiado
     Satisfied(Literal), // Literal diz que é o novo vigiado, se o literal for igual ao que chamou watch, não há novo vigiado
     Conflict,
 }
@@ -113,9 +113,7 @@ impl Clause {
                 match self.model_agreement(model, fixed_lit) {
                     Some(true) => panic!("Devia ter retornado satisfied no watch"),
                     Some(false) => return Watcher::Conflict,
-                    None => {
-                        return Watcher::Unit(fixed_lit,),
-                    }
+                    None => return Watcher::Unit(fixed_lit),
                 }
             }
         }

@@ -344,12 +344,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                     }
                                     // Se o satisfactor é o current.negate(), então a cláusula já estava satisfeita e nada deve ser feito
                                 }
-                                Watcher::Unit(to_prop, last_seen_op) => {
-                                    if last_seen_op.is_some() {
-                                        let last_seen: Literal = last_seen_op.unwrap();
-                                        (*occur_lists).add_clause_to_lit(c_ind, last_seen);
-                                        to_remove_from_occur.push(c_ind);
-                                    }
+                                Watcher::Unit(to_prop) => {
                                     // Unidade encontrada, adicione ao modelo e agende para ser propagado
                                     self.unassigned.remove(&to_prop.variable);
                                     to_propagate.push_back(to_prop);
@@ -903,7 +898,7 @@ mod tests {
         let ans = clause.watch(Literal::new(&5), &model);
         println!("Clause: {:?}", &clause);
         println!("ans {:?}", &ans);
-        assert_eq!(ans, Watcher::Unit(Literal::new(&4), Some(Literal::new(&3))))
+        assert_eq!(ans, Watcher::Unit(Literal::new(&4)))
     }
 
     #[test]
