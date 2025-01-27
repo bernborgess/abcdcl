@@ -53,8 +53,8 @@ impl Clause {
     }
 
     pub fn watch(&mut self, lit: Literal, model: &[Option<Assignment>]) -> Watcher {
-        //println!("watching {:?}", &lit);
-        //print_model(model);
+        println!("watching {:?}", &lit);
+        print_model(model);
         // trato cláusulas unitárias
         if self.literals.len() == 1 {
             match self.model_agreement(model, lit) {
