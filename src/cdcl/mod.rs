@@ -272,7 +272,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
             if !self.model_insert(lit, None) {
                 return None; //Unsat case
             }
-            self.unassigned.remove(&lit.variable);
             let occurs = full_occur_lists.get(lit);
             for &clause_ind in occurs.iter() {
                 clauses_to_remove.insert(clause_ind);
@@ -313,21 +312,21 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         return false;
                     }
                     Some(current) => {
-                        println!("Propagating {:?}", &current);
+                        //println!("Propagating {:?}", &current);
                         let clauses_to_watch: *mut Vec<usize> =
                             OccurLists::raw_pointer_to(occur_lists, current.negate());
-                        println!(
+                        /*println!(
                             "occur_list[{:?}] = {:?}",
                             current.negate(),
                             &(*clauses_to_watch)
-                        );
+                        );*/
                         let mut to_remove_from_occur: Vec<usize> = vec![];
                         for &c_ind in (*clauses_to_watch).iter() {
-                            println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
+                            //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                             let to_match =
                                 self.clauses_list[c_ind].watch(current.negate(), &(*model));
-                            println!("to match: {:?}", &to_match);
-                            println!("Clause {c_ind} after watch:{:?}", self.clauses_list[c_ind]);
+                            //println!("to match: {:?}", &to_match);
+                            //println!("Clause {c_ind} after watch:{:?}", self.clauses_list[c_ind]);
                             match to_match {
                                 Watcher::Satisfied(satisfactor) => {
                                     if current.negate() != satisfactor {
@@ -346,7 +345,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                 }
                                 Watcher::Unit(to_prop) => {
                                     // Unidade encontrada, adicione ao modelo e agende para ser propagado
-                                    self.unassigned.remove(&to_prop.variable);
                                     to_propagate.push_back(to_prop);
                                     self.model_insert(to_prop, Some(c_ind));
                                 }
@@ -482,8 +480,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
     fn backjump(&mut self, b: usize, learnt_clause: Clause) -> List {
         // ? Coloca as negações de todos os literais de dl mais baixo em uma fila para
         // ? serem propagados e deduzirem o literal de maior dl na cláusula aprendida
-        println!("Backjump to level {}", b);
-        println!("Learnt clause: {:?}", learnt_clause);
+        //println!("Backjump to level {}", b);
+        //println!("Learnt clause: {:?}", learnt_clause);
         // Remove todas as atribuições com dl maior que b do modelo
         for i in 1..(self.number_of_atoms + 1) {
             if self.model[i].is_none() {
@@ -497,9 +495,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             }
             //println!("{i} has dl={}, unassign it", ass.dl);
             //Unassign it from model
-            self.model[i] = None;
-            // Add to hashmap of unassigned
-            self.unassigned.insert(i);
+            self.model_remove(i);
         }
 
         let learnt_lit: Literal = learnt_clause
@@ -514,9 +510,9 @@ impl<H: DecideHeuristic> Cdcl<H> {
         let to_propagate: List = List::from([learnt_lit]);
 
         //adiciona a cláusula aprendida ao solver
-        println!("Adding to clauses: clause {:?}", &learnt_clause);
+        //println!("Adding to clauses: clause {:?}", &learnt_clause);
         let new_clause_index: usize = self.clauses_list.len();
-        println!("Clause {:?}", &new_clause_index);
+        //println!("Clause {:?}", &new_clause_index);
         self.add_clause(learnt_clause.literals);
 
         // Torna b o decision level atual
@@ -568,7 +564,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
         let polarity = self.decide_heuristic.next_polarity();
         let variable = self.decide_heuristic.next_variable(&self.unassigned)?;
         self.decision_level += 1;
-        self.unassigned.remove(&variable);
         let lit: Literal = Literal { variable, polarity };
         //eprintln!("decided {lit}");
         self.model_insert(lit, None);
@@ -613,11 +608,14 @@ impl<H: DecideHeuristic> Cdcl<H> {
     //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
     //ela checa se há contradição ou se um literal inválido está sendo adicionado
     fn model_insert(&mut self, lit: Literal, antecedent: Option<usize>) -> bool {
+        //print!("Inserindo {:?} no modelo, ", lit);
         match &self.model[lit.variable] {
             Some(ass) => {
                 if ass.polarity != lit.polarity {
+                    //println!("não deu");
                     return false;
                 }
+                //println!("já tava");
             }
             None => {
                 self.model[lit.variable] = Some(Assignment::new(
@@ -625,9 +623,28 @@ impl<H: DecideHeuristic> Cdcl<H> {
                     self.decision_level,
                     antecedent,
                 ));
+                self.unassigned.remove(&lit.variable);
+                //println!("deu");
             }
         }
         true
+    }
+
+    fn model_remove(&mut self, atom: usize) -> bool {
+        //print!("Removendo {:?} no modelo, ", atom);
+        match &self.model[atom] {
+            Some(_) => {
+                self.model[atom] = None;
+                self.unassigned.insert(atom);
+                println!("deu!!!");
+                return true;
+            }
+            None => {
+                //println!("já tá fora");
+                ()
+            }
+        }
+        false
     }
 
     //Qualquer adição ao modelo deve usar essa função ou a homônima pois o tipo do modelo pode ser refatorado
@@ -696,369 +713,368 @@ mod tests {
         mock_decide_heuristic
     }
 
-    /*
-        #[test]
-        fn contradiction_is_unsat() {
-            let result = run_cdcl(vec![vec![1], vec![-1]], 3, true);
-            assert_eq!(result, UNSAT);
-        }
+    #[test]
+    fn contradiction_is_unsat() {
+        let result = run_cdcl(vec![vec![1], vec![-1]], 3, true);
+        assert_eq!(result, UNSAT);
+    }
 
-        #[test]
-        fn empty_cnf_is_sat() {
-            let result = run_cdcl(vec![], 5, true);
-            assert_eq!(result, SAT(vec![true, true, true, true, true]));
-        }
+    #[test]
+    fn empty_cnf_is_sat() {
+        let result = run_cdcl(vec![], 5, true);
+        assert_eq!(result, SAT(vec![true, true, true, true, true]));
+    }
 
-        #[test]
-        fn single_cnf_is_sat() {
-            let cnf = vec![vec![1]];
-            let result = run_cdcl(cnf, 1, true);
-            match result {
-                SAT(assign) => {
-                    assert_eq!(assign.len(), 1);
-                    assert!(assign[0]);
-                }
-                _ => panic!("single cnf is sat"),
+    #[test]
+    fn single_cnf_is_sat() {
+        let cnf = vec![vec![1]];
+        let result = run_cdcl(cnf, 1, true);
+        match result {
+            SAT(assign) => {
+                assert_eq!(assign.len(), 1);
+                assert!(assign[0]);
+            }
+            _ => panic!("single cnf is sat"),
+        }
+    }
+
+    #[test]
+    fn two_cnf_is_sat() {
+        let cnf = vec![vec![1, 2], vec![-1, -2]];
+        let result = run_cdcl(cnf, 2, true);
+        match result {
+            SAT(assign) => {
+                assert_eq!(assign.len(), 2);
+                // Either [T,F] or [F,T]
+                assert!(assign == vec![true, false] || assign == vec![false, true]);
+            }
+            _ => panic!("two cnf is sat fail"),
+        }
+    }
+
+    #[test]
+    fn two_cnf_is_unsat() {
+        let cnf = vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]];
+        // TODO: Fix the backtrack to call this test...
+        let polarities = vec![false];
+        let variables = vec![2];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+
+        let mut solver = Cdcl::new(2, mock_decide_heuristic);
+        let result = solver.solve(cnf, false);
+        assert_eq!(result, UNSAT);
+    }
+
+    #[test]
+    fn pre_process_can_solve() {
+        let decide_heuristic = RandomDecideHeuristic {};
+        let mut solver = Cdcl::new(6, decide_heuristic);
+        let original_cnf: Vec<Vec<i64>> = vec![
+            //every clause has 1 (verified by pure) or 4 (verified by unit clause)
+            vec![1, 4],
+            vec![1, -2, -6],
+            vec![2, -3, 5, 1, -6],
+            vec![6, 2, -4],
+            vec![1, 2],
+            vec![-6, 1, 3],
+            vec![-5, -4, 2],
+            vec![-4],
+            vec![1, 2, 3],
+        ];
+        solver.pre_process(original_cnf);
+        assert_eq!(0, solver.clauses_list.len())
+    }
+
+    #[test]
+    fn pre_process_worked() {
+        let mock_decide_heuristic = MockDecideHeuristic::new();
+
+        let mut solver = Cdcl::new(7, mock_decide_heuristic);
+        let original_cnf: Vec<Vec<i64>> = vec![
+            //must remove clauses with 1 (verified by unit clause) or -2 (verified by pure)
+            vec![-1, -2],
+            vec![1],
+            vec![-2, 3, 4, 5],
+            vec![6, -7],
+            vec![5, 7],
+            vec![1, -5, 6],
+            vec![1, -2, 5],
+            vec![-1, 4, 5],
+            vec![-3, -4, -6],
+            vec![1, -4],
+            vec![-3, 4, -5],
+        ];
+        let target_cnf: Vec<Vec<i64>> = vec![
+            //must remove clauses with 1 (verified by unit clause) or -2 (verified by pure)
+            vec![-7, 6],
+            vec![5, 7],
+            vec![-1, 4, 5],
+            vec![-6, -4, -3],
+            vec![-5, -3, 4],
+        ];
+
+        let _ = solver.pre_process(original_cnf);
+
+        for (i, c) in solver.clauses_list.iter().enumerate() {
+            for (j, &lit) in c.literals.iter().enumerate() {
+                assert_eq!(lit, Literal::new(&target_cnf[i][j]));
             }
         }
+    }
 
-        #[test]
-        fn two_cnf_is_sat() {
-            let cnf = vec![vec![1, 2], vec![-1, -2]];
-            let result = run_cdcl(cnf, 2, true);
-            match result {
-                SAT(assign) => {
-                    assert_eq!(assign.len(), 2);
-                    // Either [T,F] or [F,T]
-                    assert!(assign == vec![true, false] || assign == vec![false, true]);
-                }
-                _ => panic!("two cnf is sat fail"),
-            }
+    #[test]
+    fn backtrack_small_case() {
+        let cnf = vec![
+            vec![1, -2, -6],
+            vec![2, -3, 5, -1, -6],
+            vec![-5, 4, 2],
+            vec![1, 2],
+            vec![-6, -1, 3],
+            vec![6, 2, 4],
+        ];
+
+        let polarities = vec![false, true];
+        let variables = vec![2, 6];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+
+        let mut solver = Cdcl::new(6, mock_decide_heuristic);
+        let result = solver.solve(cnf, false);
+        match result {
+            SAT(model) => assert_eq!(model, vec![true, false, true, true, true, true]),
+            UNSAT => panic!("backtrack small case fail"),
         }
+    }
 
-        #[test]
-        fn two_cnf_is_unsat() {
-            let cnf = vec![vec![1, 2], vec![-1, -2], vec![1, -2], vec![-1, 2]];
-            // TODO: Fix the backtrack to call this test...
-            let polarities = vec![false];
-            let variables = vec![2];
-            let mock_decide_heuristic = setup_mock(polarities, variables);
+    #[test]
+    fn check_return_level() {
+        let cnf = vec![
+            vec![-2, -3, -4],
+            vec![-3, -5, -6],
+            vec![4, 6, 7],
+            vec![-7, -8],
+            vec![-1, -7, -9],
+            vec![-1, 8, 9],
+        ];
 
-            let mut solver = Cdcl::new(2, mock_decide_heuristic);
-            let result = solver.solve(cnf, false);
-            assert_eq!(result, UNSAT);
+        let polarities = vec![true, true, true, true];
+        let variables = vec![5, 3, 2, 1];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+        let mut solver = Cdcl::new(9, mock_decide_heuristic);
+        let result = solver.solve(cnf, false);
+        // TODO: How to get what "Mock(b)" was returning??
+        match result {
+            UNSAT => println!("We got unsat..."),
+            SAT(model) => println!("We got sat...{:?}", model),
         }
+    }
 
-        #[test]
-        fn pre_process_can_solve() {
-            let decide_heuristic = RandomDecideHeuristic {};
-            let mut solver = Cdcl::new(6, decide_heuristic);
-            let original_cnf: Vec<Vec<i64>> = vec![
-                //every clause has 1 (verified by pure) or 4 (verified by unit clause)
-                vec![1, 4],
-                vec![1, -2, -6],
-                vec![2, -3, 5, 1, -6],
-                vec![6, 2, -4],
-                vec![1, 2],
-                vec![-6, 1, 3],
-                vec![-5, -4, 2],
-                vec![-4],
-                vec![1, 2, 3],
-            ];
-            solver.pre_process(original_cnf);
-            assert_eq!(0, solver.clauses_list.len())
+    #[test]
+    fn check_dubois20() {
+        let (cnf, lits) = read_from_string("./test/dubois20.cnf");
+        let result = run_cdcl(cnf, lits, false);
+        match result {
+            CdclResult::SAT(_) => println!("\nSAT"),
+            CdclResult::UNSAT => println!("\nUNSAT"),
         }
+    }
 
-        #[test]
-        fn pre_process_worked() {
-            let mock_decide_heuristic = MockDecideHeuristic::new();
+    #[test]
+    fn watch_case1() {
+        //lit_watch_pointer=other_watch_pointer+1
+        //ans before
+        let literals: Vec<Literal> = vec![
+            //Literal::new(&1),
+            Literal::new(&2),
+            Literal::new(&3),
+            Literal::new(&4),
+            Literal::new(&5),
+            /*Literal::new(&53),
+            Literal::new(&15),
+            Literal::new(&17),*/
+        ];
+        let mut clause: Clause = Clause::new(literals);
+        clause.watch_ptr[0] = 2; //other watch pointer
+        clause.watch_ptr[1] = 3; //lit watch pointer
+        let mut model: Vec<Option<Assignment>> = vec![None; 54];
+        let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
+            polarity: false,
+            dl: 0,
+            antecedent: None,
+        });
+        let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
+            polarity: true,
+            dl: 0,
+            antecedent: None,
+        });
+        model[1] = opt_asgnmt_f;
+        model[2] = opt_asgnmt_f;
+        model[3] = opt_asgnmt_f;
+        model[4] = None;
+        model[5] = opt_asgnmt_f;
+        model[53] = opt_asgnmt_f;
+        model[15] = opt_asgnmt_f;
+        model[17] = opt_asgnmt_f;
+        println!("Clause: {:?}", &clause);
+        let ans = clause.watch(Literal::new(&5), &model);
+        println!("Clause: {:?}", &clause);
+        println!("ans {:?}", &ans);
+        assert_eq!(ans, Watcher::Unit(Literal::new(&4)))
+    }
 
-            let mut solver = Cdcl::new(7, mock_decide_heuristic);
-            let original_cnf: Vec<Vec<i64>> = vec![
-                //must remove clauses with 1 (verified by unit clause) or -2 (verified by pure)
-                vec![-1, -2],
-                vec![1],
-                vec![-2, 3, 4, 5],
-                vec![6, -7],
-                vec![5, 7],
-                vec![1, -5, 6],
-                vec![1, -2, 5],
-                vec![-1, 4, 5],
-                vec![-3, -4, -6],
-                vec![1, -4],
-                vec![-3, 4, -5],
-            ];
-            let target_cnf: Vec<Vec<i64>> = vec![
-                //must remove clauses with 1 (verified by unit clause) or -2 (verified by pure)
-                vec![-7, 6],
-                vec![5, 7],
-                vec![-1, 4, 5],
-                vec![-6, -4, -3],
-                vec![-5, -3, 4],
-            ];
+    #[test]
+    //lit_watch_pointer=other_watch_pointer+n
+    //n>1; result before other_watch_pointer
+    fn watch_case2() {
+        let literals: Vec<Literal> = vec![
+            Literal::new(&1),
+            Literal::new(&2),
+            Literal::new(&3),
+            Literal::new(&4),
+            Literal::new(&5),
+            Literal::new(&53),
+            Literal::new(&15),
+            Literal::new(&17),
+        ];
+        let mut clause: Clause = Clause::new(literals);
+        clause.watch_ptr[0] = 3; //other watch pointer
+        clause.watch_ptr[1] = 5; //lit watch pointer
+        let mut model: Vec<Option<Assignment>> = vec![None; 54];
+        let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
+            polarity: false,
+            dl: 0,
+            antecedent: None,
+        });
+        let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
+            polarity: true,
+            dl: 0,
+            antecedent: None,
+        });
+        model[1] = opt_asgnmt_f;
+        model[2] = opt_asgnmt_f;
+        model[3] = opt_asgnmt_t;
+        model[4] = opt_asgnmt_f;
+        model[5] = opt_asgnmt_f;
+        model[53] = opt_asgnmt_f;
+        model[15] = opt_asgnmt_f;
+        model[17] = opt_asgnmt_f;
+        println!("Clause: {:?}", &clause);
+        let ans = clause.watch(Literal::new(&53), &model);
+        println!("Clause: {:?}", &clause);
+        println!("ans {:?}", &ans);
+        assert_eq!(ans, Watcher::Satisfied(Literal::new(&3)))
+    }
 
-            let _ = solver.pre_process(original_cnf);
+    #[test]
+    //lit_watch_pointer=other_watch_pointer+n
+    //n>1; result between pointers
+    fn watch_case3() {
+        let literals: Vec<Literal> = vec![
+            //Literal::new(&1),
+            //Literal::new(&2),
+            Literal::new(&3),
+            Literal::new(&4),
+            Literal::new(&5),
+            Literal::new(&53),
+            //Literal::new(&15),
+            //Literal::new(&17),
+        ];
+        let mut clause: Clause = Clause::new(literals);
+        clause.watch_ptr[0] = 1; //other watch pointer
+        clause.watch_ptr[1] = 3; //lit watch pointer
+        let mut model: Vec<Option<Assignment>> = vec![None; 54];
+        let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
+            polarity: false,
+            dl: 0,
+            antecedent: None,
+        });
+        let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
+            polarity: true,
+            dl: 0,
+            antecedent: None,
+        });
+        model[1] = opt_asgnmt_f;
+        model[2] = opt_asgnmt_f;
+        model[3] = opt_asgnmt_f;
+        model[4] = opt_asgnmt_f;
+        model[5] = opt_asgnmt_t;
+        model[53] = opt_asgnmt_f;
+        model[15] = opt_asgnmt_f;
+        model[17] = opt_asgnmt_f;
+        println!("Clause: {:?}", &clause);
+        let ans = clause.watch(Literal::new(&53), &model);
+        println!("Clause: {:?}", &clause);
+        println!("ans {:?}", &ans);
+        assert_eq!(ans, Watcher::Satisfied(Literal::new(&5)))
+    }
 
-            for (i, c) in solver.clauses_list.iter().enumerate() {
-                for (j, &lit) in c.literals.iter().enumerate() {
-                    assert_eq!(lit, Literal::new(&target_cnf[i][j]));
-                }
-            }
-        }
+    #[test]
+    fn watch_case4() {
+        //lit_watch_pointer<other_watch_pointer
+        //ans before
+        let literals: Vec<Literal> = vec![
+            //Literal::new(&1),
+            Literal::new(&2),
+            Literal::new(&3),
+            Literal::new(&4),
+            Literal::new(&5),
+            Literal::new(&53),
+            //Literal::new(&15),
+            //Literal::new(&17),
+        ];
+        let mut clause: Clause = Clause::new(literals);
+        clause.watch_ptr[0] = 2; //other watch pointer
+        clause.watch_ptr[1] = 3; //lit watch pointer
+        let mut model: Vec<Option<Assignment>> = vec![None; 54];
+        let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
+            polarity: false,
+            dl: 0,
+            antecedent: None,
+        });
+        let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
+            polarity: true,
+            dl: 0,
+            antecedent: None,
+        });
+        model[1] = opt_asgnmt_f;
+        model[2] = opt_asgnmt_f;
+        model[3] = opt_asgnmt_t;
+        model[4] = opt_asgnmt_f;
+        model[5] = opt_asgnmt_f;
+        model[53] = opt_asgnmt_f;
+        model[15] = opt_asgnmt_f;
+        model[17] = opt_asgnmt_f;
+        println!("Clause: {:?}", &clause);
+        let ans = clause.watch(Literal::new(&4), &model);
+        println!("Clause: {:?}", &clause);
+        println!("ans {:?}", &ans);
+        assert_eq!(ans, Watcher::Satisfied(Literal::new(&3)))
+    }
 
-        #[test]
-        fn backtrack_small_case() {
-            let cnf = vec![
-                vec![1, -2, -6],
-                vec![2, -3, 5, -1, -6],
-                vec![-5, 4, 2],
-                vec![1, 2],
-                vec![-6, -1, 3],
-                vec![6, 2, 4],
-            ];
+    #[test]
+    fn watch_on_conflict() {
+        let literals: Vec<Literal> =
+            vec![Literal::new(&-24), Literal::new(&-55), Literal::new(&23)];
+        let mut clause: Clause = Clause::new(literals);
+        let mut model: Vec<Option<Assignment>> = vec![None; 56];
+        let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
+            polarity: false,
+            dl: 0,
+            antecedent: None,
+        });
+        let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
+            polarity: true,
+            dl: 0,
+            antecedent: None,
+        });
+        model[23] = opt_asgnmt_f;
+        model[55] = opt_asgnmt_t;
+        model[24] = opt_asgnmt_t;
+        println!("Clause before: {:?}", &clause);
+        let ans = clause.watch(Literal::new(&-24), &model);
+        println!("Clause after: {:?}", &clause);
+        println!("ans {:?}", &ans);
+    }
 
-            let polarities = vec![false, true];
-            let variables = vec![2, 6];
-            let mock_decide_heuristic = setup_mock(polarities, variables);
-
-            let mut solver = Cdcl::new(6, mock_decide_heuristic);
-            let result = solver.solve(cnf, false);
-            match result {
-                SAT(model) => assert_eq!(model, vec![true, false, true, true, true, true]),
-                UNSAT => panic!("backtrack small case fail"),
-            }
-        }
-
-        #[test]
-        fn check_return_level() {
-            let cnf = vec![
-                vec![-2, -3, -4],
-                vec![-3, -5, -6],
-                vec![4, 6, 7],
-                vec![-7, -8],
-                vec![-1, -7, -9],
-                vec![-1, 8, 9],
-            ];
-
-            let polarities = vec![true, true, true, true];
-            let variables = vec![5, 3, 2, 1];
-            let mock_decide_heuristic = setup_mock(polarities, variables);
-            let mut solver = Cdcl::new(9, mock_decide_heuristic);
-            let result = solver.solve(cnf, false);
-            // TODO: How to get what "Mock(b)" was returning??
-            match result {
-                UNSAT => println!("We got unsat..."),
-                SAT(model) => println!("We got sat...{:?}", model),
-            }
-        }
-
-        #[test]
-        fn check_dubois20() {
-            let (cnf, lits) = read_from_string("./test/dubois20.cnf");
-            let result = run_cdcl(cnf, lits, false);
-            match result {
-                CdclResult::SAT(_) => println!("\nSAT"),
-                CdclResult::UNSAT => println!("\nUNSAT"),
-            }
-        }
-
-        #[test]
-        fn watch_case1() {
-            //lit_watch_pointer=other_watch_pointer+1
-            //ans before
-            let literals: Vec<Literal> = vec![
-                //Literal::new(&1),
-                Literal::new(&2),
-                Literal::new(&3),
-                Literal::new(&4),
-                Literal::new(&5),
-                /*Literal::new(&53),
-                Literal::new(&15),
-                Literal::new(&17),*/
-            ];
-            let mut clause: Clause = Clause::new(literals);
-            clause.watch_ptr[0] = 2; //other watch pointer
-            clause.watch_ptr[1] = 3; //lit watch pointer
-            let mut model: Vec<Option<Assignment>> = vec![None; 54];
-            let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
-                polarity: false,
-                dl: 0,
-                antecedent: None,
-            });
-            let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
-                polarity: true,
-                dl: 0,
-                antecedent: None,
-            });
-            model[1] = opt_asgnmt_f;
-            model[2] = opt_asgnmt_f;
-            model[3] = opt_asgnmt_f;
-            model[4] = None;
-            model[5] = opt_asgnmt_f;
-            model[53] = opt_asgnmt_f;
-            model[15] = opt_asgnmt_f;
-            model[17] = opt_asgnmt_f;
-            println!("Clause: {:?}", &clause);
-            let ans = clause.watch(Literal::new(&5), &model);
-            println!("Clause: {:?}", &clause);
-            println!("ans {:?}", &ans);
-            assert_eq!(ans, Watcher::Unit(Literal::new(&4)))
-        }
-
-        #[test]
-        //lit_watch_pointer=other_watch_pointer+n
-        //n>1; result before other_watch_pointer
-        fn watch_case2() {
-            let literals: Vec<Literal> = vec![
-                Literal::new(&1),
-                Literal::new(&2),
-                Literal::new(&3),
-                Literal::new(&4),
-                Literal::new(&5),
-                Literal::new(&53),
-                Literal::new(&15),
-                Literal::new(&17),
-            ];
-            let mut clause: Clause = Clause::new(literals);
-            clause.watch_ptr[0] = 3; //other watch pointer
-            clause.watch_ptr[1] = 5; //lit watch pointer
-            let mut model: Vec<Option<Assignment>> = vec![None; 54];
-            let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
-                polarity: false,
-                dl: 0,
-                antecedent: None,
-            });
-            let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
-                polarity: true,
-                dl: 0,
-                antecedent: None,
-            });
-            model[1] = opt_asgnmt_f;
-            model[2] = opt_asgnmt_f;
-            model[3] = opt_asgnmt_t;
-            model[4] = opt_asgnmt_f;
-            model[5] = opt_asgnmt_f;
-            model[53] = opt_asgnmt_f;
-            model[15] = opt_asgnmt_f;
-            model[17] = opt_asgnmt_f;
-            println!("Clause: {:?}", &clause);
-            let ans = clause.watch(Literal::new(&53), &model);
-            println!("Clause: {:?}", &clause);
-            println!("ans {:?}", &ans);
-            assert_eq!(ans, Watcher::Satisfied(Literal::new(&3)))
-        }
-
-        #[test]
-        //lit_watch_pointer=other_watch_pointer+n
-        //n>1; result between pointers
-        fn watch_case3() {
-            let literals: Vec<Literal> = vec![
-                //Literal::new(&1),
-                //Literal::new(&2),
-                Literal::new(&3),
-                Literal::new(&4),
-                Literal::new(&5),
-                Literal::new(&53),
-                //Literal::new(&15),
-                //Literal::new(&17),
-            ];
-            let mut clause: Clause = Clause::new(literals);
-            clause.watch_ptr[0] = 1; //other watch pointer
-            clause.watch_ptr[1] = 3; //lit watch pointer
-            let mut model: Vec<Option<Assignment>> = vec![None; 54];
-            let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
-                polarity: false,
-                dl: 0,
-                antecedent: None,
-            });
-            let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
-                polarity: true,
-                dl: 0,
-                antecedent: None,
-            });
-            model[1] = opt_asgnmt_f;
-            model[2] = opt_asgnmt_f;
-            model[3] = opt_asgnmt_f;
-            model[4] = opt_asgnmt_f;
-            model[5] = opt_asgnmt_t;
-            model[53] = opt_asgnmt_f;
-            model[15] = opt_asgnmt_f;
-            model[17] = opt_asgnmt_f;
-            println!("Clause: {:?}", &clause);
-            let ans = clause.watch(Literal::new(&53), &model);
-            println!("Clause: {:?}", &clause);
-            println!("ans {:?}", &ans);
-            assert_eq!(ans, Watcher::Satisfied(Literal::new(&5)))
-        }
-
-        #[test]
-        fn watch_case4() {
-            //lit_watch_pointer<other_watch_pointer
-            //ans before
-            let literals: Vec<Literal> = vec![
-                //Literal::new(&1),
-                Literal::new(&2),
-                Literal::new(&3),
-                Literal::new(&4),
-                Literal::new(&5),
-                Literal::new(&53),
-                //Literal::new(&15),
-                //Literal::new(&17),
-            ];
-            let mut clause: Clause = Clause::new(literals);
-            clause.watch_ptr[0] = 2; //other watch pointer
-            clause.watch_ptr[1] = 3; //lit watch pointer
-            let mut model: Vec<Option<Assignment>> = vec![None; 54];
-            let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
-                polarity: false,
-                dl: 0,
-                antecedent: None,
-            });
-            let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
-                polarity: true,
-                dl: 0,
-                antecedent: None,
-            });
-            model[1] = opt_asgnmt_f;
-            model[2] = opt_asgnmt_f;
-            model[3] = opt_asgnmt_t;
-            model[4] = opt_asgnmt_f;
-            model[5] = opt_asgnmt_f;
-            model[53] = opt_asgnmt_f;
-            model[15] = opt_asgnmt_f;
-            model[17] = opt_asgnmt_f;
-            println!("Clause: {:?}", &clause);
-            let ans = clause.watch(Literal::new(&4), &model);
-            println!("Clause: {:?}", &clause);
-            println!("ans {:?}", &ans);
-            assert_eq!(ans, Watcher::Satisfied(Literal::new(&3)))
-        }
-
-        #[test]
-        fn watch_on_conflict() {
-            let literals: Vec<Literal> =
-                vec![Literal::new(&-24), Literal::new(&-55), Literal::new(&23)];
-            let mut clause: Clause = Clause::new(literals);
-            let mut model: Vec<Option<Assignment>> = vec![None; 56];
-            let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
-                polarity: false,
-                dl: 0,
-                antecedent: None,
-            });
-            let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
-                polarity: true,
-                dl: 0,
-                antecedent: None,
-            });
-            model[23] = opt_asgnmt_f;
-            model[55] = opt_asgnmt_t;
-            model[24] = opt_asgnmt_t;
-            println!("Clause before: {:?}", &clause);
-            let ans = clause.watch(Literal::new(&-24), &model);
-            println!("Clause after: {:?}", &clause);
-            println!("ans {:?}", &ans);
-        }
-    */
     #[test]
     fn check_aim() {
         let (cnf, lits) = read_from_string("./test/aim-100-1_6-yes1-1.cnf");
