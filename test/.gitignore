@@ -7,3 +7,5 @@
 !ex3.cnf
 
 error.log
+# Needed for unit test
+!dubois20.cnf
