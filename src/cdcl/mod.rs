@@ -9,15 +9,16 @@ use rand::prelude::IteratorRandom;
 use rand::Rng;
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
-use std::mem;
+use std::fmt;
 use utils::{print_decision_levels, print_model, remove_clauses_from_lit};
+use CdclResult::*;
 pub mod assignment;
 pub mod clause;
 pub mod literal;
 pub mod occurlist;
 pub mod utils;
 
-type Queue = VecDeque<Literal>;
+type List = VecDeque<Literal>;
 
 #[automock]
 pub trait DecideHeuristic {
@@ -63,7 +64,17 @@ pub enum CdclResult {
     UNSAT,
     SAT(Vec<bool>),
 }
-use CdclResult::*;
+
+impl fmt::Display for CdclResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            CdclResult::UNSAT => write!(f, "Unsatisfiable formula"),
+            CdclResult::SAT(ref msg) => write!(f, "Model: {:?}", msg),
+        }
+    }
+}
+
+impl std::error::Error for CdclResult {}
 
 pub struct Cdcl<H: DecideHeuristic> {
     pub clauses_list: Vec<Clause>,  // array de cláusulas
@@ -92,19 +103,24 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     pub fn solve(&mut self, cnf: Vec<Vec<i64>>, pre_process_switch: bool) -> CdclResult {
-        let mut to_propagate: Option<Queue> = if pre_process_switch {
-            self.pre_process(cnf) //aplica a regra PURE e outros truques de pré-processamento
+        let mut to_propagate: Option<List>;
+        if pre_process_switch {
+            //aplica a regra PURE e outros truques de pré-processamento
+            to_propagate = match self.pre_process(cnf) {
+                Ok(lits) => lits,
+                Err(e) => return e,
+            };
         } else {
             self.clauses_list = Clause::new_vec(cnf);
-            None
-        };
-        //self.print_clauses();
+            to_propagate = None;
+        }
         if self.clauses_list.is_empty() {
             return self.yield_model();
         }
         self.build_occur_lists();
+        let mut queue_rounds: usize = to_propagate.as_ref().map(|v| v.len()).unwrap();
         loop {
-            while self.propagate_gives_conflict(&mut to_propagate) {
+            while self.propagate_gives_conflict(&mut to_propagate, &mut queue_rounds) {
                 match self.analyze_conflict() {
                     None => return UNSAT,
                     Some((b, learnt_clause)) => {
@@ -123,17 +139,21 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     // Remove duplicatas, realiza atribuições triviais (PURE e cláusulas unitárias), remove cláusulas satisfeitas
     // retorna vetor de Literal para propagar e constrói as cláusulas do solver
-    pub fn pre_process(&mut self, mut cnf: Vec<Vec<i64>>) -> Option<Queue> {
-        let mut decided: Queue = VecDeque::new();
+    pub fn pre_process(&mut self, mut cnf: Vec<Vec<i64>>) -> Result<Option<List>, CdclResult> {
+        let mut decided: List = VecDeque::new();
         let mut clauses_to_remove: HashSet<usize> = HashSet::new();
         let mut seen_status: Vec<Seen> = vec![Seen::Unseen; self.number_of_atoms + 1]; // 1 campo extra para indexar em base 1
         let mut full_occur_lists = OccurLists::new(self.number_of_atoms + 1); // 1 campo extra para indexar em base 1
+
         for (clause_ind, clause) in cnf.iter_mut().enumerate() {
             if clause.len() == 1 {
                 // se essa cláusula só tem um literal, então só atribuições que tornam esse literal verdadeiro podem ser modelos
                 let lit = Literal::new(&clause[0]);
                 decided.push_back(lit);
                 clauses_to_remove.insert(clause_ind);
+                /*if !self.model_insert(lit, None){
+                    return None;
+                }*/
             }
             // Vou supor que não vão existir cláusulas triviais (ex: 1 -1 2 -4 0) em nossos casos de teste pelo bem da minha sanidade
             for &raw_lit in clause.iter() {
@@ -173,11 +193,17 @@ impl<H: DecideHeuristic> Cdcl<H> {
             }
         }
 
-        self.grow_model_and_remove_clauses(&decided, &mut clauses_to_remove, &full_occur_lists, cnf)
+        let ans = self
+            .grow_model_and_remove_clauses(&decided, &mut clauses_to_remove, &full_occur_lists, cnf)
             .map(|filtered_cnf| {
                 self.clauses_list = Clause::new_vec(filtered_cnf);
                 decided
-            })
+            });
+        if ans.is_none() {
+            Err(UNSAT)
+        } else {
+            Ok(ans)
+        }
     }
 
     pub fn build_occur_lists(&mut self) {
@@ -192,7 +218,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     fn grow_model_and_remove_clauses(
         &mut self,
-        decided: &Queue,
+        decided: &List,
         clauses_to_remove: &mut HashSet<usize>,
         full_occur_lists: &OccurLists,
         mut cnf: Vec<Vec<i64>>,
@@ -216,36 +242,47 @@ impl<H: DecideHeuristic> Cdcl<H> {
         Some(cnf)
     }
 
-    pub fn propagate_gives_conflict(&mut self, to_propagate_ref: &mut Option<Queue>) -> bool {
-        let to_propagate: Option<Queue> = to_propagate_ref.take();
-        let mut to_propagate: Queue = to_propagate.unwrap_or_default();
-        println!("to_propagate: {:?}", &to_propagate);
+    pub fn propagate_gives_conflict(
+        &mut self,
+        to_propagate_ref: &mut Option<List>,
+        queue_rounds: &mut usize,
+    ) -> bool {
+        let to_propagate: Option<List> = to_propagate_ref.take();
+        let mut to_propagate: List = to_propagate.unwrap_or_default();
+        //println!("to_propagate: {:?}", &to_propagate);
         unsafe {
             let model: *mut Vec<Option<Assignment>> = &mut self.model;
             let occur_lists: *mut OccurLists = &mut self.occur_lists;
             loop {
                 //print_model(&model);
-                match to_propagate.pop_front() {
+                let propagating = if *queue_rounds > 0 {
+                    *queue_rounds -= 1;
+                    to_propagate.pop_front()
+                } else {
+                    to_propagate.pop_back()
+                };
+                match propagating {
                     None => {
                         //a fila está vazia, não tem nada para propagar, então retorno sem acusar conflito
                         //self.model = model;
                         return false;
                     }
                     Some(current) => {
-                        println!("Propagating {:?}", &current);
+                        //println!("Propagating {:?}", &current);
                         let clauses_to_watch: *mut Vec<usize> =
                             OccurLists::raw_pointer_to(occur_lists, current.negate());
-                        println!(
+                        /*println!(
                             "occur_list[{:?}] = {:?}",
                             current.negate(),
                             &(*clauses_to_watch)
-                        );
+                        );*/
                         let mut to_remove_from_occur: Vec<usize> = vec![];
                         for &c_ind in (*clauses_to_watch).iter() {
-                            println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
+                            //println!("Clause {c_ind}:{:?}", self.clauses_list[c_ind]);
                             let to_match =
                                 self.clauses_list[c_ind].watch(current.negate(), &(*model));
-                            println!("Clause {c_ind} after watch:{:?}", self.clauses_list[c_ind]);
+                            //println!("to match: {:?}", &to_match);
+                            //println!("Clause {c_ind} after watch:{:?}", self.clauses_list[c_ind]);
                             match to_match {
                                 Watcher::Satisfied(satisfactor) => {
                                     if current.negate() != satisfactor {
@@ -261,7 +298,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                     }
                                     // Se o satisfactor é o current.negate(), então a cláusula já estava satisfeita e nada deve ser feito
                                 }
-                                Watcher::Unit(to_prop, last_seen) => {
+                                Watcher::Unit(to_prop) => {
                                     /*if current.negate() != last_seen {
                                         (*occur_lists).add_clause_to_lit(c_ind, last_seen);
                                         to_remove_from_occur.push(c_ind);
@@ -305,17 +342,17 @@ impl<H: DecideHeuristic> Cdcl<H> {
             .as_ref()
             .expect("Conflict was not defined!")
             .clone();
-        println!("Conflict: {:?}", &learnt);
+        //println!("Conflict: {:?}", &learnt);
         //print_decision_levels(&learnt, &self.model);
 
         // literals with current decision level
-        let mut literals: Queue = learnt
+        let mut literals: List = learnt
             .literals
             .iter()
             .filter(|lit| self.literal_has_max_dl(**lit))
             .copied()
             .collect();
-        println!("literals with current decision level: {:?}", &literals);
+        //println!("literals with current decision level: {:?}", &literals);
 
         while literals.len() != 1 {
             // Implied literals
@@ -325,20 +362,20 @@ impl<H: DecideHeuristic> Cdcl<H> {
                     .antecedent
                     .is_some()
             });
-            println!("implied literals: {:?}", &literals);
+            //println!("implied literals: {:?}", &literals);
             // Select any literal that meets the criterion
             let literal = literals.front();
             if literal.is_none() {
                 break;
             }
             let literal = *literal.unwrap();
-            println!("front: {:?}", &literal);
+            //println!("front: {:?}", &literal);
             let antecedent = &self.get_antecedent(literal);
             if antecedent.is_none() {
                 break;
             }
             let antecedent = &self.clauses_list[antecedent.unwrap()];
-            println!("front antecedent: {:?}", antecedent);
+            //println!("front antecedent: {:?}", antecedent);
             learnt = learnt.resolution(antecedent, literal);
             // Literals with current decision level
             literals = learnt
@@ -393,11 +430,11 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     //muda para None a atribuição de variáveis com decision level maior que b
     //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
-    fn backjump(&mut self, b: usize, learnt_clause: Clause) -> Queue {
+    fn backjump(&mut self, b: usize, learnt_clause: Clause) -> List {
         // ? Coloca as negações de todos os literais de dl mais baixo em uma fila para
         // ? serem propagados e deduzirem o literal de maior dl na cláusula aprendida
-        println!("Backjump to level {}", b);
-        println!("Learnt clause: {:?}", learnt_clause);
+        //println!("Backjump to level {}", b);
+        //println!("Learnt clause: {:?}", learnt_clause);
         // Remove todas as atribuições com dl maior que b do modelo
         for i in 1..(self.number_of_atoms + 1) {
             if self.model[i].is_none() {
@@ -409,7 +446,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 //eprintln!("{i} has dl={}, let it be.", ass.dl);
                 continue;
             }
-            println!("{i} has dl={}, unassign it", ass.dl);
+            //println!("{i} has dl={}, unassign it", ass.dl);
             //Unassign it from model
             self.model[i] = None;
             // Add to hashmap of unassigned
@@ -424,8 +461,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
             .expect("No literal was learned");
 
         //let learnt_lit: Literal = unset_lit.negate();
-        println!("unset lit {:?}", &learnt_lit);
-        let to_propagate: Queue = Queue::from([learnt_lit]);
+        //println!("unset lit {:?}", &learnt_lit);
+        let to_propagate: List = List::from([learnt_lit]);
 
         //adiciona a cláusula aprendida ao solver
         let new_clause_index: usize = self.clauses_list.len();
@@ -482,7 +519,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         self.decision_level += 1;
         self.unassigned.remove(&variable);
         let lit: Literal = Literal { variable, polarity };
-        eprintln!("decided {lit}");
+        //eprintln!("decided {lit}");
         self.model_insert(lit, None);
         Some(lit)
     }
@@ -506,8 +543,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     pub fn yield_model(&self) -> CdclResult {
-        println!("Model to yield:");
-        print_model(&self.model);
+        //println!("Model to yield:");
+        //print_model(&self.model);
         let vanilla_assignment = Assignment {
             polarity: false,
             antecedent: None,
@@ -606,6 +643,12 @@ mod tests {
             });
 
         mock_decide_heuristic
+    }
+
+    #[test]
+    fn contradiction_is_unsat() {
+        let result = run_cdcl(vec![vec![1], vec![-1]], 3, true);
+        assert_eq!(result, UNSAT);
     }
 
     #[test]
@@ -757,11 +800,74 @@ mod tests {
 
     #[test]
     fn check_dubois20() {
-        let (cnf, lits) = read_from_string("./test/dubois20.cnf");
+        let (cnf, lits) = read_from_string("./test/dubois50.cnf");
         let result = run_cdcl(cnf, lits, true);
         match result {
             CdclResult::SAT(_) => println!("\nSAT"),
             CdclResult::UNSAT => println!("\nUNSAT"),
         }
+    }
+
+    #[test]
+    fn watch_on_unit() {
+        let literals: Vec<Literal> = vec![
+            Literal::new(&1),
+            Literal::new(&2),
+            Literal::new(&3),
+            Literal::new(&4),
+            Literal::new(&5),
+            Literal::new(&53),
+            Literal::new(&15),
+        ];
+        let mut clause: Clause = Clause::new(literals);
+        let mut model: Vec<Option<Assignment>> = vec![None; 54];
+        let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
+            polarity: false,
+            dl: 0,
+            antecedent: None,
+        });
+        let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
+            polarity: true,
+            dl: 0,
+            antecedent: None,
+        });
+        model[2] = opt_asgnmt_f;
+        model[3] = opt_asgnmt_f;
+        model[4] = opt_asgnmt_f;
+        model[5] = opt_asgnmt_f;
+        model[15] = opt_asgnmt_f;
+        model[53] = opt_asgnmt_f;
+        let ans = clause.watch(Literal::new(&2), &model);
+        println!("Clause: {:?}", &clause);
+        println!("ans {:?}", &ans);
+        model[5] = None;
+        let ans = clause.watch(Literal::new(&2), &model);
+        println!("Clause: {:?}", &clause);
+        println!("ans {:?}", &ans);
+    }
+
+    #[test]
+    fn watch_on_conflict() {
+        let literals: Vec<Literal> =
+            vec![Literal::new(&-24), Literal::new(&-55), Literal::new(&23)];
+        let mut clause: Clause = Clause::new(literals);
+        let mut model: Vec<Option<Assignment>> = vec![None; 56];
+        let opt_asgnmt_f: Option<Assignment> = Some(Assignment {
+            polarity: false,
+            dl: 0,
+            antecedent: None,
+        });
+        let opt_asgnmt_t: Option<Assignment> = Some(Assignment {
+            polarity: true,
+            dl: 0,
+            antecedent: None,
+        });
+        model[23] = opt_asgnmt_f;
+        model[55] = opt_asgnmt_t;
+        model[24] = opt_asgnmt_t;
+        println!("Clause before: {:?}", &clause);
+        let ans = clause.watch(Literal::new(&-24), &model);
+        println!("Clause after: {:?}", &clause);
+        println!("ans {:?}", &ans);
     }
 }

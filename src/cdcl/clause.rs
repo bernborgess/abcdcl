@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 use std::fmt;
-
+#[derive(Debug)]
 pub enum Watcher {
-    Unit(Literal, Literal), // Primeiro literal diz quem propagar,
-    // segundo literal mostra o último literal visto antes do ponteiro tentar explodir
+    Unit(Literal),      // Literal diz quem propagar,
     Watched(Literal),   // Literal diz quem é o novo vigiado
     Satisfied(Literal), // Literal diz que é o novo vigiado, se o literal for igual ao que chamou watch, não há novo vigiado
     Conflict(Literal),  // Literal diz a
@@ -47,12 +46,13 @@ impl Clause {
     }
 
     pub fn watch(&mut self, lit: Literal, model: &[Option<Assignment>]) -> Watcher {
+        //println!("watching {:?}", &lit);
         // trato cláusulas unitárias
         if self.literals.len() == 1 {
             match self.model_agreement(model, lit) {
                 Some(true) => Watcher::Satisfied(lit),
                 Some(false) => Watcher::Conflict(lit),
-                None => Watcher::Unit(lit, lit),
+                None => Watcher::Unit(lit),
             }
         } else {
             let val_0: Literal = self.point(0).unwrap();
@@ -70,9 +70,9 @@ impl Clause {
                 } else if val_1 == lit {
                     1
                 } else {
-                    eprintln!("Clause: {:?}", &self);
-                    eprintln!("lit: {lit}");
-                    print_model(model);
+                    //eprintln!("Clause: {:?}", &self);
+                    //eprintln!("lit: {lit}");
+                    //print_model(model);
                     panic!("The literal {:?} is not being watched here", lit);
                 };
                 self.next(pointer_to_lit, model, true)
@@ -93,11 +93,10 @@ impl Clause {
         // vai retorna o literal que sobrou para ser propagado ou retornar conflito se o último literal discorda do modelo
         if max_pointer == self.literals.len() - 1 {
             let not_watched: Literal = self.point((pointer_to_lit + 1) % 2).unwrap();
-            let watched_lit: Literal = self.point(pointer_to_lit).unwrap();
             match self.model_agreement(model, not_watched) {
                 Some(true) => panic!("Devia ter retornado satisfied antes de chegar aqui"),
                 Some(false) => Watcher::Conflict(not_watched),
-                None => Watcher::Unit(not_watched, watched_lit),
+                None => Watcher::Unit(not_watched),
             }
         } else {
             // incrementa o ponteiro?
@@ -111,8 +110,10 @@ impl Clause {
                 Some(true) => Watcher::Satisfied(candidate),
                 Some(false) => {
                     let watched = self.next(pointer_to_lit, model, false);
-                    if let Watcher::Unit(_, _) = &watched {
-                        if non_recursive_call {
+                    if non_recursive_call {
+                        if let Watcher::Unit(_) = &watched {
+                            self.watch_ptr[pointer_to_lit] = checkpoint;
+                        } else if let Watcher::Conflict(_) = &watched {
                             self.watch_ptr[pointer_to_lit] = checkpoint;
                         }
                     }
@@ -141,9 +142,9 @@ impl Clause {
             .cloned()
             .collect();
         let second: Vec<Literal> = other.literals.clone();
-        println!("Resolving on pivot {:?}: ", &pivot);
-        println!("{:?}", &self.literals);
-        println!("{:?}", &second);
+        //println!("Resolving on pivot {:?}: ", &pivot);
+        //println!("{:?}", &self.literals);
+        //println!("{:?}", &second);
         let mut seen: HashSet<Literal> = first.iter().cloned().collect();
         seen.remove(&pivot);
         seen.remove(&pivot.negate());
@@ -154,8 +155,8 @@ impl Clause {
                 first.push(item);
             }
         }
-        println!("Result:");
-        println!("{:?}\n", &first);
+        //println!("Result:");
+        //println!("{:?}\n", &first);
         Clause {
             literals: first,
             watch_ptr: [0, 1],

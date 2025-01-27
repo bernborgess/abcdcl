@@ -26,7 +26,25 @@ pub fn print_decision_levels(clause: &Clause, model: &[Option<Assignment>]) {
         if !i.polarity {
             print!("¬")
         }
-        print!("p{:?}({:?}); ", i.variable, model[i.variable].unwrap().dl);
+        print!(
+            "p{:?}({:?}); ",
+            i.variable,
+            model[i.variable]
+                .unwrap_or({
+                    println!(
+                        "Mas que porra? Se não tá no modelo, como tá na cláusula de conflito?"
+                    );
+                    println!("A dita cuja: {:?}", clause);
+                    println!("O modelo:");
+                    println!("{:?}", model);
+                    Assignment {
+                        dl: 6969,
+                        polarity: true,
+                        antecedent: None,
+                    }
+                })
+                .dl
+        );
     }
     println!();
 }
