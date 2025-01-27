@@ -48,3 +48,8 @@ pub fn print_decision_levels(clause: &Clause, model: &[Option<Assignment>]) {
     }
     println!();
 }
+
+pub fn remove_duplicates<T: Ord>(v: &mut Vec<T>) {
+    v.sort();
+    v.dedup();
+}
