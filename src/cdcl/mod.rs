@@ -636,7 +636,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             Some(_) => {
                 self.model[atom] = None;
                 self.unassigned.insert(atom);
-                println!("deu!!!");
+                //println!("deu!!!");
                 return true;
             }
             None => {
@@ -1071,8 +1071,7 @@ mod tests {
         model[24] = opt_asgnmt_t;
         println!("Clause before: {:?}", &clause);
         let ans = clause.watch(Literal::new(&-24), &model);
-        println!("Clause after: {:?}", &clause);
-        println!("ans {:?}", &ans);
+        assert_eq!(ans, Watcher::Conflict);
     }
 
     #[test]
