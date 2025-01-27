@@ -13,6 +13,9 @@ RESET="\033[0;0m"
 pass_count=0
 total_count=0
 
+# Time limit for each execution (in seconds)
+TIME_LIMIT=30
+
 # Check if ./minisat exists
 if [ ! -f "./minisat" ]; then
     echo "Error: ./minisat not found. Did you run \"./test/download-minisat.sh\"?"
@@ -32,7 +35,11 @@ for bm in "${benchmarks[@]}"; do
         for file in ${bm}*.cnf; do
             # echo "Running $file..."
             abcdcl_outfile="./out/${file}.output"
-            cargo run -q -- "$file" > "$abcdcl_outfile" 2>error.log
+            timeout "$TIME_LIMIT" cargo run -q -- "$file" > "$abcdcl_outfile" 2>error.log
+            if [ $? -eq 124 ]; then
+                echo -e "${RED_BG}TIMEOUT${RED} $file${RESET}"
+                continue
+            fi
             if [ $? -ne 0 ]; then
                 echo "Error: cargo run failed for $file. Stopping script."
                 echo -e "\n====================================================\n"

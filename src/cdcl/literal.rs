@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -38,7 +39,6 @@ impl fmt::Display for Literal {
     }
 }
 
-// Implement the `Display` trait for `Literal`
 impl fmt::Debug for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.polarity {
@@ -46,5 +46,22 @@ impl fmt::Debug for Literal {
         } else {
             write!(f, "¬{}", self.variable)
         }
+    }
+}
+
+impl Ord for Literal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self.polarity, other.polarity) {
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (true, true) => self.variable.cmp(&other.variable),
+            (false, false) => other.variable.cmp(&self.variable),
+        }
+    }
+}
+
+impl PartialOrd for Literal {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
