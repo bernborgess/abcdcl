@@ -52,4 +52,12 @@ impl OccurLists {
     pub fn add_clause_to_lit(&mut self, clause_id: usize, lit: Literal) {
         self.get_mut(lit).push(clause_id);
     }
+
+    pub unsafe fn raw_pointer_to(occur_lists: *mut OccurLists, lit: Literal) -> *mut Vec<usize> {
+        if lit.polarity {
+            &mut (*occur_lists).positive[lit.variable]
+        } else {
+            &mut (*occur_lists).negative[lit.variable]
+        }
+    }
 }
