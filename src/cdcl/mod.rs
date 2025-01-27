@@ -293,16 +293,18 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                         //remover c_ind do occur[current.negate()]
 
                                         // Como satisfactor foi encontrado, agora, coloque c_ind na lista de ocorrências de satisfactor
+                                        //println!("Entrou para a cláusula {c_ind}");
                                         (*occur_lists).add_clause_to_lit(c_ind, satisfactor);
                                         to_remove_from_occur.push(c_ind);
                                     }
                                     // Se o satisfactor é o current.negate(), então a cláusula já estava satisfeita e nada deve ser feito
                                 }
-                                Watcher::Unit(to_prop) => {
-                                    /*if current.negate() != last_seen {
+                                Watcher::Unit(to_prop, last_seen_op) => {
+                                    if last_seen_op.is_some() {
+                                        let last_seen: Literal = last_seen_op.unwrap();
                                         (*occur_lists).add_clause_to_lit(c_ind, last_seen);
                                         to_remove_from_occur.push(c_ind);
-                                    }*/
+                                    }
                                     // Unidade encontrada, adicione ao modelo e agende para ser propagado
                                     self.unassigned.remove(&to_prop.variable);
                                     to_propagate.push_back(to_prop);
@@ -313,9 +315,13 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                     (*occur_lists).add_clause_to_lit(c_ind, new_watched);
                                     to_remove_from_occur.push(c_ind);
                                 }
-                                Watcher::Conflict(_) => {
+                                Watcher::Conflict => {
                                     // Conflito encontrado
                                     self.conflicting = Some(self.clauses_list[c_ind].clone());
+                                    remove_clauses_from_lit(
+                                        &to_remove_from_occur,
+                                        &mut (*clauses_to_watch),
+                                    );
                                     //self.model = model;
                                     //(*occur_lists).give_to(clauses_to_watch, current.negate());
                                     return true;
@@ -800,7 +806,7 @@ mod tests {
 
     #[test]
     fn check_dubois20() {
-        let (cnf, lits) = read_from_string("./test/dubois50.cnf");
+        let (cnf, lits) = read_from_string("./test/dubois20.cnf");
         let result = run_cdcl(cnf, lits, true);
         match result {
             CdclResult::SAT(_) => println!("\nSAT"),

@@ -2,10 +2,10 @@ use std::collections::HashSet;
 use std::fmt;
 #[derive(Debug)]
 pub enum Watcher {
-    Unit(Literal),      // Literal diz quem propagar,
-    Watched(Literal),   // Literal diz quem é o novo vigiado
+    Unit(Literal, Option<Literal>), // Literal diz quem propagar, option diz quem é o novo literal vigiado se houver
+    Watched(Literal),               // Literal diz quem é o novo vigiado
     Satisfied(Literal), // Literal diz que é o novo vigiado, se o literal for igual ao que chamou watch, não há novo vigiado
-    Conflict(Literal),  // Literal diz a
+    Conflict,
 }
 
 use crate::cdcl::utils::print_model;
@@ -47,12 +47,13 @@ impl Clause {
 
     pub fn watch(&mut self, lit: Literal, model: &[Option<Assignment>]) -> Watcher {
         //println!("watching {:?}", &lit);
+        //print_model(model);
         // trato cláusulas unitárias
         if self.literals.len() == 1 {
             match self.model_agreement(model, lit) {
                 Some(true) => Watcher::Satisfied(lit),
-                Some(false) => Watcher::Conflict(lit),
-                None => Watcher::Unit(lit),
+                Some(false) => Watcher::Conflict,
+                None => Watcher::Unit(lit, None),
             }
         } else {
             let val_0: Literal = self.point(0).unwrap();
@@ -93,15 +94,22 @@ impl Clause {
         // vai retorna o literal que sobrou para ser propagado ou retornar conflito se o último literal discorda do modelo
         if max_pointer == self.literals.len() - 1 {
             let not_watched: Literal = self.point((pointer_to_lit + 1) % 2).unwrap();
+            let watched: Literal = self.point(pointer_to_lit).unwrap();
             match self.model_agreement(model, not_watched) {
                 Some(true) => panic!("Devia ter retornado satisfied antes de chegar aqui"),
-                Some(false) => Watcher::Conflict(not_watched),
-                None => Watcher::Unit(not_watched),
+                Some(false) => Watcher::Conflict,
+                None => {
+                    if non_recursive_call {
+                        Watcher::Unit(not_watched, None)
+                    } else {
+                        Watcher::Unit(not_watched, Some(watched))
+                    }
+                }
             }
         } else {
             // incrementa o ponteiro?
             // a grande sacanagem é que você pode ter que chamar next n vezes recursivamente
-            // mas se ela for propagar unidade o ponteiro não se move nem uma vez
+            // mas se ela for retornar conflito o ponteiro não se move nem uma vez
             // meu deus que detalhe mais cretino
             let checkpoint = self.watch_ptr[pointer_to_lit];
             self.watch_ptr[pointer_to_lit] = max_pointer + 1;
@@ -111,9 +119,7 @@ impl Clause {
                 Some(false) => {
                     let watched = self.next(pointer_to_lit, model, false);
                     if non_recursive_call {
-                        if let Watcher::Unit(_) = &watched {
-                            self.watch_ptr[pointer_to_lit] = checkpoint;
-                        } else if let Watcher::Conflict(_) = &watched {
+                        if let Watcher::Conflict = &watched {
                             self.watch_ptr[pointer_to_lit] = checkpoint;
                         }
                     }
