@@ -30,7 +30,8 @@
                     "--no-run",
                     "--lib",
                     "--package=abcdcl",
-                    "check_return_level",
+                    "--",
+                    "cdcl::tests::check_aim"
                 ],
                 "filter": {
                     "name": "abcdcl",
@@ -38,7 +39,8 @@
                 }
             },
             "args": [
-                "--nocapture"
+                "--nocapture",
+                "cdcl::tests::check_aim"
             ],
             "cwd": "${workspaceFolder}"
         }

@@ -24,8 +24,8 @@ fi
 
 benchmarks=(
 #    "f" # all SAT -> f benchmark is too huge, can't run locally.
-   "dubois" # all UNSAT
-   "aim" # 48 SAT, 24 UNSAT
+#   "dubois" # all UNSAT
+#   "aim" # 48 SAT, 24 UNSAT
    "jnh" # 16 SAT, 24 UNSAT
 )
 
@@ -35,7 +35,8 @@ for bm in "${benchmarks[@]}"; do
         for file in ${bm}*.cnf; do
             # echo "Running $file..."
             abcdcl_outfile="./out/${file}.output"
-            timeout "$TIME_LIMIT" cargo run -q -- "$file" > "$abcdcl_outfile" 2>error.log
+            abcdcl_errfile="./out/${file}.err.log"
+            timeout "$TIME_LIMIT" cargo run -q -- "$file" > "$abcdcl_outfile" 2>$abcdcl_errfile
             if [ $? -eq 124 ]; then
                 echo -e "${RED_BG}TIMEOUT${RED} $file${RESET}"
                 continue

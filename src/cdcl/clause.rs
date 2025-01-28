@@ -8,8 +8,6 @@ pub enum Watcher {
     Conflict,
 }
 
-use crate::cdcl::utils::print_model;
-
 use super::{assignment::Assignment, literal::Literal};
 
 #[derive(Clone)]
@@ -39,7 +37,7 @@ impl Clause {
         }
     }
 
-    pub fn new_vec(arr: Vec<Vec<i64>>) -> Vec<Clause> {
+    pub fn new_vec(arr: &Vec<Vec<i64>>) -> Vec<Clause> {
         arr.into_iter()
             .map(|v| v.iter().map(|x| Literal::new(&x)).collect())
             .map(Clause::new)
