@@ -404,7 +404,16 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     //muda para None a atribuição de variáveis com decision level maior que b
     //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
-    fn backtrack(&mut self, b: usize, learnt_clause_index: ClauseIndex) {}
+    fn backtrack(&mut self, b: usize, learnt_clause_index: ClauseIndex) {
+        for lit in &self.formula[learnt_clause_index].literals {
+            if let Some(ass) = self.model[lit.variable] {
+                if ass.dl <= b {
+                    continue;
+                }
+                self.model[lit.variable] = None;
+            }
+        }
+    }
 
     // Chooses a variable and a value to it
     // Panics if no variable is unassigned
