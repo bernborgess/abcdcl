@@ -5,6 +5,7 @@ use mockall::predicate::*;
 use mockall::*;
 use rand::prelude::IteratorRandom;
 use rand::Rng;
+use std::cmp::min;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use CdclResult::*;
@@ -75,24 +76,12 @@ enum UnitPropagationResult {
 impl<H: DecideHeuristic> Cdcl<H> {
     #[must_use]
     pub fn new(raw_cnf: Vec<Vec<i64>>, number_of_atoms: usize, decide_heuristic: H) -> Self {
-        // Create empty sets for each literal
-        let mut clauses_with_lit_watched = HashMap::new();
-        // Loop all literals and insert an empty HashSet for each key
-        for variable in 1..=number_of_atoms {
-            for polarity in [false, true] {
-                clauses_with_lit_watched.insert(
-                    Literal { variable, polarity },
-                    HashSet::<ClauseIndex>::new(),
-                );
-            }
-        }
-
         // TODO: Pre processing to get rid of trivial clauses
 
         Cdcl {
             formula: Clause::new_vec(raw_cnf),
             decision_level: 0,
-            model: vec![None; number_of_atoms + 1], //aloco 1 espaço a mais para garantir indexação em base 1
+            model: vec![None; number_of_atoms + 1],
             clauses_with_lit_watched: HashMap::new(),
             decide_heuristic,
         }
@@ -123,7 +112,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
         // Invocamos o método `unit_propagation` e notamos o resultado
         // Se reason for "conflict", temos uma contradição, retornamos UNSAT.
-        if let UnitPropagationResult::Conflict(_) = self.unit_propagation(&to_propagate) {
+        if let UnitPropagationResult::Conflict(_) = self.unit_propagation(&mut to_propagate) {
             return UNSAT;
         }
 
@@ -144,7 +133,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
             loop {
                 // Invocamos `unit_propagation`
-                match self.unit_propagation(&to_propagate) {
+                match self.unit_propagation(&mut to_propagate) {
                     // Se `reason` nao for "conflict", saímos do loop para decidir novamente
                     UnitPropagationResult::Unresolved => break,
                     UnitPropagationResult::Conflict(conflict_clause_index) => {
@@ -186,22 +175,27 @@ impl<H: DecideHeuristic> Cdcl<H> {
     /// Inicializamos os `watch_pointers` e `clauses_with_lit_watched`
     /// com os primeiros dois literais de cada clausula
     fn init_watches(&mut self) {
-        for clause in &self.formula {
-            if clause.literals.len() == 1 {
-                // Apenas um literal
-                let var = clause.watch_pointers[0];
-                // TODO push_back the clause index to var
-                // self.clauses_with_lit_watched.insert(var, );
-            } else {
+        for (clause_index, clause) in self.formula.iter().enumerate() {
+            for lit_index in 0..(min(clause.literals.len(), 2)) {
+                let lit = clause.literals[lit_index];
+                // Adicione o índice da clausula ao conjunto de
+                // clausulas observadas por este literal
+                self.clauses_with_lit_watched
+                    .entry(lit)
+                    .or_default()
+                    .insert(clause_index);
             }
         }
     }
 
-    fn unit_propagation(&self, to_propagate: &Queue) -> UnitPropagationResult {
-        // TODO
-        // self.model;
-        // self.clauses_with_lit_watched;
-        // self.formula[clause_id].watch_pointers
+    fn unit_propagation(&self, to_propagate: &mut Queue) -> UnitPropagationResult {
+        while let Some(lit) = to_propagate.pop_front() {
+
+            // TODO
+            // self.model;
+            // self.clauses_with_lit_watched;
+            // self.formula[clause_id].watch_pointers
+        }
         UnitPropagationResult::Unresolved
     }
 
