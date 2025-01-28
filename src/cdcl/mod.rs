@@ -188,13 +188,90 @@ impl<H: DecideHeuristic> Cdcl<H> {
         }
     }
 
-    fn unit_propagation(&self, to_propagate: &mut Queue) -> UnitPropagationResult {
-        while let Some(lit) = to_propagate.pop_front() {
+    fn unit_propagation(&mut self, to_propagate: &mut Queue) -> UnitPropagationResult {
+        // Enquanto ha literais para propagar tomamos `watching_lit`
+        while let Some(watching_lit) = to_propagate.pop_front() {
+            // Para cada `clause` em que `watching_lit` ocorre,
+            if let Some(clause_indices) = self.clauses_with_lit_watched.get(&watching_lit).cloned()
+            {
+                let mut rewatched = false;
+                for watching_clause_index in clause_indices {
+                    let watching_clause = &mut self.formula[watching_clause_index];
+                    let mut watched_lits = vec![];
+                    for wp_index in watching_clause.watch_pointers {
+                        watched_lits.push(watching_clause.literals[wp_index]);
+                    }
 
-            // TODO
-            // self.model;
-            // self.clauses_with_lit_watched;
-            // self.formula[clause_id].watch_pointers
+                    // Para cada literal nessa `clause`
+                    for (lit_index, &lit) in watching_clause.literals.iter().enumerate() {
+                        if watched_lits.contains(&lit) {
+                            continue;
+                        }
+                        if let Some(asgnmt) = self.model[lit.variable] {
+                            if !asgnmt.polarity {
+                                continue;
+                            }
+                        }
+                        // Se encontramos um `lit` nao observado e nao valorado como F no model
+                        // Começamos a observar `lit`, em vez de `watching_lit`
+                        let idx = if watching_clause.literals[watching_clause.watch_pointers[0]]
+                            == watching_lit
+                        {
+                            0
+                        } else {
+                            1
+                        }; // TODO: Readability
+                        watching_clause.watch_pointers[idx] = lit_index;
+
+                        self.clauses_with_lit_watched
+                            .entry(watching_lit)
+                            .or_default()
+                            .remove(&watching_clause_index);
+
+                        self.clauses_with_lit_watched
+                            .entry(lit)
+                            .or_default()
+                            .insert(watching_clause_index);
+
+                        rewatched = true;
+                    }
+                    if !rewatched {
+                        // Se ha apenas um literal observado em `watching_clause`
+                        if watching_clause.watch_pointers[0] == watching_clause.watch_pointers[1] {
+                            // retornamos um conflito
+                            return UnitPropagationResult::Conflict(watching_clause_index);
+                        }
+                        // Caso contrario tomamos `other` o outro literal observado.
+                        let other: Literal = if watching_lit
+                            == watching_clause.literals[watching_clause.watch_pointers[0]]
+                        {
+                            watching_clause.literals[watching_clause.watch_pointers[1]]
+                        } else {
+                            watching_clause.literals[watching_clause.watch_pointers[0]]
+                        }; // TODO: readability
+
+                        match self.model[other.variable] {
+                            // Se `other` nao esta definido no model
+                            None => {
+                                // Adicionamos esta ao model
+                                self.model_assign(other, Some(watching_clause_index));
+                                // Propagamos
+                                to_propagate.push_back(other);
+                            }
+                            Some(asgnmt) => {
+                                // Se outro eh T no modelo, continuamos
+                                if asgnmt.polarity {
+                                    continue;
+                                }
+                                // Se outro eh F no modelo, temos um Conflito
+                                else {
+                                    return UnitPropagationResult::Conflict(watching_clause_index);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         UnitPropagationResult::Unresolved
     }
