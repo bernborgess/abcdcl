@@ -5,8 +5,8 @@ use mockall::predicate::*;
 use mockall::*;
 use rand::prelude::IteratorRandom;
 use rand::Rng;
-use std::cmp::{max, min};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cmp::{max, min, Reverse};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fmt;
 use CdclResult::*;
 pub mod assignment;
@@ -362,8 +362,44 @@ impl<H: DecideHeuristic> Cdcl<H> {
     /// Add a new clause and prepares the watched literals
     /// Returns the index of the new clause
     fn add_learnt_clause(&mut self, learnt_clause: &Clause) -> ClauseIndex {
-        // TODO
-        0
+        let new_clause_id = self.formula.len();
+        // Adicione `learnt_clause` as clausulas da formula
+        self.formula.push(learnt_clause.clone());
+
+        // Se houver somente um literal na clausula terminamos
+        if learnt_clause.literals.len() < 2 {
+            let lit = learnt_clause.literals[0];
+            self.clauses_with_lit_watched
+                .entry(lit)
+                .or_default()
+                .insert(new_clause_id);
+            self.formula[new_clause_id].watch_pointers[0] = 0;
+            return new_clause_id;
+        }
+
+        // Atribua `watch_pointers` aos dois literais de `learnt_clause`
+        // com maior decision level
+        let mut heap_of_two = BinaryHeap::with_capacity(2);
+        for (literal_index, literal) in learnt_clause.literals.iter().enumerate() {
+            if let Some(asgnmt) = self.model[literal.variable] {
+                // Manter os dois melhores na heap
+                heap_of_two.push(Reverse((asgnmt.dl, literal, literal_index)));
+                while heap_of_two.len() > 2 {
+                    heap_of_two.pop();
+                }
+            }
+        }
+        for (i, Reverse((_, to_watch_lit, lit_index))) in heap_of_two.into_vec().iter().enumerate()
+        {
+            // Atualize `clauses_with_lit_watched` com `learnt_clause` para estes literais
+            self.clauses_with_lit_watched
+                .entry(**to_watch_lit)
+                .or_default()
+                .insert(new_clause_id);
+            self.formula[new_clause_id].watch_pointers[i] = *lit_index;
+        }
+
+        new_clause_id
     }
 
     //muda para None a atribuição de variáveis com decision level maior que b
