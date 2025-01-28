@@ -446,7 +446,11 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     fn model_assign(&mut self, lit: Literal, antecedent: Option<ClauseIndex>) {
-        // TODO
+        self.model[lit.variable] = Some(Assignment {
+            polarity: lit.polarity,
+            antecedent,
+            dl: self.decision_level,
+        });
     }
 
     pub fn yield_model(&self) -> CdclResult {
