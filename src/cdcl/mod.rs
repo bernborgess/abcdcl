@@ -96,7 +96,20 @@ impl<H: DecideHeuristic> Cdcl<H> {
         // Para cada clausula com um único literal, adicionamos a negação deste a fila
         // `to_propagate`, caso esta variável ja nao ocorra no `model`
         let mut to_propagate: Queue = VecDeque::new();
-        // TODO
+        for clause_index in 0..self.formula.len() {
+            let clause = &self.formula[clause_index];
+            if clause.literals.len() != 1 {
+                continue;
+            }
+            let lit = clause.literals[0];
+            if self.model[lit.variable].is_none() {
+                // Adicionamos ao model
+                self.model[lit.variable] =
+                    Some(Assignment::new(lit.polarity, 0, Some(clause_index)));
+                // Sua negação eh propagada
+                to_propagate.push_back(lit.negate());
+            }
+        }
 
         // Invocamos o método `unit_propagation` e notamos o resultado
         // Se reason for "conflict", temos uma contradição, retornamos UNSAT.
