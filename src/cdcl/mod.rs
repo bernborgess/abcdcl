@@ -5,7 +5,7 @@ use mockall::predicate::*;
 use mockall::*;
 use rand::prelude::IteratorRandom;
 use rand::Rng;
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use CdclResult::*;
@@ -71,6 +71,11 @@ pub struct Cdcl<H: DecideHeuristic> {
 enum UnitPropagationResult {
     Unresolved,
     Conflict(ClauseIndex),
+}
+
+fn resolve(clause_a: &Clause, clause_b: &Clause, pivot: Literal) -> Clause {
+    // TODO
+    Clause::new(vec![])
 }
 
 impl<H: DecideHeuristic> Cdcl<H> {
@@ -287,8 +292,71 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     /// Returns what decision level needs to be decremented
     fn conflict_analysis(&self, conflict_clause_index: ClauseIndex) -> Option<(usize, Clause)> {
-        // TODO
-        None
+        if self.decision_level == 0 {
+            return None;
+        }
+
+        let conflict_clause = &self.formula[conflict_clause_index];
+
+        // Para cada `literal` da `conflict_clause`
+        // Cujo decision level eh o atual
+        let mut literals: Queue = conflict_clause
+        .literals
+        .iter()
+        .filter(|lit| match self.model[lit.variable] {
+            None => false,
+            Some(asgnmt) => asgnmt.dl == self.decision_level /*&& asgnmt.antecedent.is_some()*/,
+        })
+        .copied()
+        .collect();
+
+        let mut learnt_clause = conflict_clause.clone();
+
+        while literals.len() != 1 {
+            // E o antecedente existe i.e. ele foi propagado
+            literals.retain(|lit| {
+                self.model[lit.variable]
+                    .expect("Conflict should be assigned for all variables")
+                    .antecedent
+                    .is_some()
+            });
+            let literal = literals.front();
+            if literal.is_none() {
+                break;
+            }
+            let literal = *literal.unwrap();
+
+            // Tomamos o seu `antecedent` i.e. os literais da clausula unitária que propagou esse literal
+            let antecedent = &self.model[literal.variable]?.antecedent;
+            if antecedent.is_none() {
+                break;
+            }
+            let antecedent = &self.formula[antecedent.unwrap()];
+
+            // Calculamos a `resolution` de `learnt_clause` e `antecedent` com pivô `literal`
+            // A clausula resolvida eh a nova clausula conflitante, chamada "aprendida"
+            learnt_clause = resolve(&learnt_clause, antecedent, literal);
+        }
+
+        // Temos uma clausula aprendida `learnt_clause`
+        // Analisamos o decision level dos literais contidos nessa clausula
+
+        // Se forem todos iguais, retornamos b = 0 e learnt_clause
+        // Caso contrario, calculamos b para o (segundo) maior decision level em aprendida
+        let mut b = 0;
+        for lit in &learnt_clause.literals {
+            match self.model[lit.variable] {
+                None => continue,
+                Some(asgnmt) => {
+                    if asgnmt.dl < self.decision_level {
+                        // Armazena o maior decision level encontrado,
+                        // quando menor que o `self.decision_level`
+                        b = max(b, asgnmt.dl);
+                    }
+                }
+            }
+        }
+        Some((b, learnt_clause))
     }
 
     /// Add a new clause and prepares the watched literals
