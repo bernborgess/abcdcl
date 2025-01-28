@@ -15,13 +15,13 @@ use super::{assignment::Assignment, literal::Literal};
 #[derive(Clone)]
 pub struct Clause {
     pub literals: Vec<Literal>,
-    pub watch_ptr: [usize; 2],
+    pub watch_pointers: [usize; 2],
 }
 
 impl fmt::Debug for Clause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, lit) in self.literals.iter().enumerate() {
-            if (self.watch_ptr[0] == i) || (self.watch_ptr[1] == i) {
+            if (self.watch_pointers[0] == i) || (self.watch_pointers[1] == i) {
                 write!(f, "•")?;
             }
             write!(f, "{:?},", lit)?;
@@ -35,7 +35,7 @@ impl Clause {
         let arr = if literals.len() == 1 { [0, 0] } else { [0, 1] };
         Clause {
             literals,
-            watch_ptr: arr,
+            watch_pointers: arr,
         }
     }
 
@@ -93,15 +93,15 @@ impl Clause {
         let n: usize = self.literals.len();
         let fixed_lit = self.point(1 - pointer_to_lit).unwrap();
         let original_lit: Literal = self.point(pointer_to_lit).unwrap();
-        let pointer_to_avoid: usize = self.watch_ptr[1 - pointer_to_lit];
-        let mut next: usize = self.watch_ptr[pointer_to_lit];
+        let pointer_to_avoid: usize = self.watch_pointers[1 - pointer_to_lit];
+        let mut next: usize = self.watch_pointers[pointer_to_lit];
         loop {
             next = if ((next + 1) % n) == pointer_to_avoid {
                 (next + 2) % n
             } else {
                 (next + 1) % n
             };
-            self.watch_ptr[pointer_to_lit] = next;
+            self.watch_pointers[pointer_to_lit] = next;
             let watched_lit: Literal = self.point(pointer_to_lit).unwrap();
             if watched_lit != original_lit {
                 match self.model_agreement(model, watched_lit) {
@@ -126,7 +126,7 @@ impl Clause {
 
     //retorna o valor apontado pelo ponteiro i
     fn point(&self, i: usize) -> Option<Literal> {
-        self.literals.get(self.watch_ptr[i]).copied()
+        self.literals.get(self.watch_pointers[i]).copied()
     }
 
     pub fn resolution(&self, other: &Clause, pivot: Literal) -> Clause {
@@ -154,7 +154,7 @@ impl Clause {
         //println!("{:?}\n", &first);
         Clause {
             literals: first,
-            watch_ptr: [0, 1],
+            watch_pointers: [0, 1],
         }
     }
 }
