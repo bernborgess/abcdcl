@@ -91,8 +91,18 @@ enum UnitPropagationResult {
 }
 
 fn resolve(clause_a: &Clause, clause_b: &Clause, pivot: Literal) -> Clause {
-    // TODO
-    Clause::new(vec![])
+    // Combine the two slices into one vector
+    let mut resolved_lits: Vec<_> = clause_a
+        .literals
+        .iter()
+        .chain(clause_b.literals.iter())
+        .cloned()
+        .collect();
+
+    // Filter out the pivot element
+    resolved_lits.retain(|&lit| lit.variable != pivot.variable);
+
+    Clause::new(resolved_lits)
 }
 
 impl<H: DecideHeuristic> Cdcl<H> {
