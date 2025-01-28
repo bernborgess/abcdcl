@@ -277,8 +277,12 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     fn all_variables_assigned(&self) -> bool {
-        // TODO
-        false
+        for lit in &self.model {
+            if lit.is_none() {
+                return false;
+            }
+        }
+        true
     }
 
     /// Returns what decision level needs to be decremented
