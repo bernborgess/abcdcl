@@ -63,7 +63,7 @@ pub struct Cdcl<H: DecideHeuristic> {
     pub formula: Vec<Clause>,
     pub decision_level: usize,
     model: Vec<Option<Assignment>>,
-    clauses_with_lit_watched: HashMap<Literal, Vec<usize>>,
+    clauses_with_lit_watched: HashMap<Literal, HashSet<ClauseIndex>>,
     decide_heuristic: H,
 }
 
@@ -75,7 +75,17 @@ enum UnitPropagationResult {
 impl<H: DecideHeuristic> Cdcl<H> {
     #[must_use]
     pub fn new(raw_cnf: Vec<Vec<i64>>, number_of_atoms: usize, decide_heuristic: H) -> Self {
-        // Transforms the `raw_cnf` into a list of clauses
+        // Create empty sets for each literal
+        let mut clauses_with_lit_watched = HashMap::new();
+        // Loop all literals and insert an empty HashSet for each key
+        for variable in 1..=number_of_atoms {
+            for polarity in [false, true] {
+                clauses_with_lit_watched.insert(
+                    Literal { variable, polarity },
+                    HashSet::<ClauseIndex>::new(),
+                );
+            }
+        }
 
         // TODO: Pre processing to get rid of trivial clauses
 
@@ -151,7 +161,12 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
                                 // Nesse momento ha apenas um literal `lit` em `learnt_clause`
                                 // e nao no `model`
-                                let lit = Literal::new(&0); // TODO
+                                let lit: Literal = learnt_clause
+                                    .literals
+                                    .iter()
+                                    .find(|lit| self.model[lit.variable].is_none())
+                                    .cloned()
+                                    .expect("No literal was learned");
 
                                 // Adicionamos a negação de `lit` ao `model`, com antecedente `learnt_clause`
                                 self.model_assign(lit.negate(), Some(learnt_clause_index));
@@ -171,7 +186,15 @@ impl<H: DecideHeuristic> Cdcl<H> {
     /// Inicializamos os `watch_pointers` e `clauses_with_lit_watched`
     /// com os primeiros dois literais de cada clausula
     fn init_watches(&mut self) {
-        // TODO
+        for clause in &self.formula {
+            if clause.literals.len() == 1 {
+                // Apenas um literal
+                let var = clause.watch_pointers[0];
+                // TODO push_back the clause index to var
+                // self.clauses_with_lit_watched.insert(var, );
+            } else {
+            }
+        }
     }
 
     fn unit_propagation(&self, to_propagate: &Queue) -> UnitPropagationResult {
