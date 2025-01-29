@@ -1,0 +1,112 @@
+\documentclass[a4paper,12pt]{article}
+
+% Include packages
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{lipsum}
+\usepackage{minted}  % For source code formatting
+
+% Set the page margins
+\geometry{top=1in, bottom=1in, left=1in, right=1in}
+
+% Fancy header
+\pagestyle{fancy}
+\fancyhead[L]{CDCL Solver Report}
+\fancyhead[R]{Date}
+
+\title{Experimental Evaluation and Implementation of a Conflict-Driven Clause Learning (CDCL) Solver}
+\author{Atila Carvalho \& Bernardo Borges}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    This report presents the implementation and experimental evaluation of a Conflict-Driven Clause Learning (CDCL) solver. The solver is designed to efficiently solve Boolean satisfiability problems (SAT) by using various optimization techniques and heuristics. The report describes the solver’s architecture, its key features, and presents experimental results demonstrating its performance on a set of benchmark problems.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+\label{sec:introduction}
+The introduction should provide a general overview of the SAT problem and the importance of CDCL solvers. You can include the following points:
+\begin{itemize}
+    \item Background on SAT and its importance in various fields (e.g., verification, optimization, artificial intelligence).
+    \item Overview of CDCL solvers and their key concepts.
+    \item Brief description of the objectives of the project and the structure of the report.
+\end{itemize}
+
+\section{Solver Design and Implementation}
+\label{sec:design}
+This section should describe the architecture and design choices of your CDCL solver. Some topics to cover:
+\begin{itemize}
+    \item Description of the CDCL algorithm: search process, conflict analysis, backtracking, clause learning.
+    \item Key data structures used in the solver (e.g., decision stack, implication graph, learned clauses).
+    \item Heuristics implemented (e.g., variable selection, decision ordering).
+    \item Optimizations applied (e.g., restarts, watched literals, UIP learning).
+\end{itemize}
+
+\section{Experimental Setup}
+\label{sec:experiment}
+In this section, describe the experimental setup used to evaluate the solver. Include:
+\begin{itemize}
+    \item Description of the SAT instances used in the experiments (e.g., DIMACS benchmark formats, problem types).
+    \item Hardware and software environment for running experiments (e.g., processor, memory, operating system, libraries).
+    \item Metrics used for evaluating solver performance (e.g., runtime, number of conflicts, memory usage, number of clauses learned).
+\end{itemize}
+
+\section{Results and Evaluation}
+\label{sec:results}
+This section should present the results of your experiments and analyze the performance of your solver. Topics to include:
+\begin{itemize}
+    \item Summary of experimental results with tables and figures (e.g., performance on different benchmarks, comparison with other solvers if applicable).
+    \item Analysis of the solver’s strengths and weaknesses based on the results.
+    \item Discussion on the impact of various optimizations and heuristics on solver performance.
+\end{itemize}
+
+\section{Challenges and Lessons Learned}
+\label{sec:challenges}
+This section should discuss the challenges you faced during the implementation and evaluation of the solver, as well as the lessons learned:
+\begin{itemize}
+    \item Difficulties in implementing specific features or algorithms.
+    \item Insights gained from debugging and performance tuning.
+    \item How certain design choices impacted the solver’s efficiency and correctness.
+\end{itemize}
+
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+In the conclusion, summarize the key findings and suggest potential improvements:
+\begin{itemize}
+    \item Recap of the objectives and how they were achieved.
+    \item Summary of the solver’s performance and main takeaways.
+    \item Suggestions for future work (e.g., improvements to heuristics, additional optimizations, new features to implement).
+\end{itemize}
+
+\section{References}
+\label{sec:references}
+Include all the references you used throughout your report. Example:
+\begin{itemize}
+    \item \textit{J. Conflicts et al., "Improving SAT solvers," Journal of Algorithms, 2010.}
+    \item \textit{S. Solver, "Optimizations in CDCL solvers," SAT Conference Proceedings, 2015.}
+\end{itemize}
+
+\newpage
+\appendix
+\section{Appendix: Source Code}
+\label{sec:appendix}
+Include the relevant source code snippets or provide a link to the full implementation if it's hosted in a public repository (e.g., GitHub). For code snippets:
+\begin{minted}[frame=single, linenos=true, breaklines=true, fontsize=\footnotesize]{rust}
+fn main() {
+    println!("Hello, CDCL Solver!");
+    // Your implementation here
+}
+\end{minted}
+
+\end{document}
