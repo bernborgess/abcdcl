@@ -11,12 +11,12 @@ fn main() {
             println!("SAT");
             for (i, b) in model.iter().enumerate() {
                 if *b {
-                    print!("{i} ");
+                    print!("{} ", i + 1);
                 } else {
-                    print!("-{i} ");
+                    print!("-{} ", i + 1);
                 }
             }
-            println!();
+            println!("0");
         }
         CdclResult::UNSAT => println!("\nUNSAT"),
     }
