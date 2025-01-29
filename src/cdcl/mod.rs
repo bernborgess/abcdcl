@@ -107,8 +107,6 @@ fn resolve(clause_a: &Clause, clause_b: &Clause, pivot: Literal) -> Clause {
 impl<H: DecideHeuristic> Cdcl<H> {
     #[must_use]
     pub fn new(raw_cnf: &[Vec<i64>], number_of_atoms: usize, decide_heuristic: H) -> Self {
-        // TODO: Pre processing to get rid of trivial clauses
-
         Cdcl {
             formula: Clause::new_vec(raw_cnf),
             decision_level: 0,
@@ -136,7 +134,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 // Adicionamos ao model
                 self.model[lit.variable] =
                     Some(Assignment::new(lit.polarity, 0, Some(clause_index)));
-                // Sua negação eh propagada
+                // Propagamos
                 to_propagate.push_back(lit);
             }
         }
@@ -495,6 +493,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
 #[cfg(test)]
 mod tests {
+    use core::panic;
+
     use crate::parser::read_from_string;
 
     use super::*;
@@ -685,10 +685,22 @@ mod tests {
             vec![-4],
             vec![1, 2, 3],
         ];
-        let _solver = Cdcl::new(&original_cnf, 6, decide_heuristic);
-        // TODO
+        let mut solver = Cdcl::new(&original_cnf, 6, decide_heuristic);
+        // TODO: implement pre_process
         // solver.pre_process(original_cnf);
         // assert_eq!(0, solver.formula.len())
+        match solver.solve() {
+            UNSAT => {
+                get_trace(&solver);
+                panic!("Expected SAT");
+            }
+            SAT(model) => {
+                if !check_model(&original_cnf, &model) {
+                    get_trace(&solver);
+                    panic!("Model does not solve!");
+                }
+            }
+        }
     }
 
     #[test]
