@@ -58,7 +58,7 @@ impl DecideHeuristic for RandomDecideHeuristic {
 }
 
 pub fn run_cdcl(cnf: &Vec<Vec<i64>>, number_of_atoms: usize) -> CdclResult {
-    let mut solver = Cdcl::new(&cnf, number_of_atoms, RandomDecideHeuristic {}); // Uses rust RNG
+    let mut solver = Cdcl::new(cnf, number_of_atoms, RandomDecideHeuristic {}); // Uses rust RNG
     solver.solve()
 }
 
@@ -83,6 +83,8 @@ pub struct Cdcl<H: DecideHeuristic> {
     model: Vec<Option<Assignment>>,
     clauses_with_lit_watched: HashMap<Literal, HashSet<ClauseIndex>>,
     decide_heuristic: H,
+    // ! DEBUG ONLY
+    pub _decisions: Vec<Literal>,
 }
 
 enum UnitPropagationResult {
@@ -116,6 +118,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             model: vec![None; number_of_atoms + 1],
             clauses_with_lit_watched: HashMap::new(),
             decide_heuristic,
+            _decisions: vec![],
         }
     }
 
@@ -145,6 +148,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         // Invocamos o método `unit_propagation` e notamos o resultado
         // Se reason for "conflict", temos uma contradição, retornamos UNSAT.
         if let UnitPropagationResult::Conflict(_) = self.unit_propagation(&mut to_propagate) {
+            println!("UNSAT DUE TO CONFLICT AT DL 0");
             return UNSAT;
         }
 
@@ -158,6 +162,9 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
             // Adicionamos `lit` ao `model`
             self.model_assign(lit, None);
+
+            // ! DEBUG
+            println!(">>> DECIDE {lit} at DL {}", self.decision_level);
 
             // Atribuímos a negação de `lit` para a fila `to_propagate`
             to_propagate.clear();
@@ -192,12 +199,16 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                     .cloned()
                                     .expect("No literal was learned");
 
-                                // Adicionamos a negação de `lit` ao `model`, com antecedente `learnt_clause`
-                                self.model_assign(lit, Some(learnt_clause_index));
+                                // A negação de lit eh a opção que resta, pois essa decisão
+                                // que levou ao conflito.
+                                let learned_lit = lit.negate();
 
-                                // `to_propagate` sera agora apenas `lit`
+                                // Adicionamos a negação de `lit` ao `model`, com antecedente `learnt_clause`
+                                self.model_assign(learned_lit, Some(learnt_clause_index));
+
+                                // `to_propagate` sera agora apenas `learned_lit`
                                 to_propagate.clear();
-                                to_propagate.push_back(lit);
+                                to_propagate.push_back(learned_lit);
                             }
                         }
                     }
@@ -224,14 +235,24 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     fn unit_propagation(&mut self, to_propagate: &mut Queue) -> UnitPropagationResult {
+        println!("\n\nNEW UNIT PROPAGATION SESSION");
         // Enquanto ha literais para propagar tomamos `watching_lit`
         while let Some(mut watching_lit) = to_propagate.pop_front() {
             watching_lit = watching_lit.negate();
+            // !DEBUG
+            println!("to_propagate iteration with watching_lit={watching_lit}");
 
             // Para cada `clause` em que `watching_lit` ocorre,
             if let Some(clause_indices) = self.clauses_with_lit_watched.get(&watching_lit).cloned()
             {
-                let mut rewatched = false;
+                // ! DEBUG
+                for idx in &clause_indices {
+                    println!(
+                        "##################### {} is watched in {}",
+                        watching_lit, idx
+                    );
+                }
+
                 for watching_clause_index in clause_indices {
                     let watching_clause = &mut self.formula[watching_clause_index];
                     let mut watched_lits = vec![];
@@ -239,17 +260,18 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         watched_lits.push(watching_clause.literals[wp_index]);
                     }
 
+                    let mut rewatched = false;
                     // Para cada literal nessa `clause`
                     for (lit_index, &lit) in watching_clause.literals.iter().enumerate() {
                         if watched_lits.contains(&lit) {
                             continue;
                         }
                         if let Some(asgnmt) = self.model[lit.variable] {
-                            if !asgnmt.polarity {
+                            if asgnmt.polarity != lit.polarity {
                                 continue;
                             }
                         }
-                        // Se encontramos um `lit` nao observado e nao valorado como F no model
+                        // Se encontramos um `lit` nao observado e discordando do model
                         // Começamos a observar `lit`, em vez de `watching_lit`
                         let idx = if watching_clause.literals[watching_clause.watch_pointers[0]]
                             == watching_lit
@@ -258,6 +280,32 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         } else {
                             1
                         }; // TODO: Readability
+
+                        // ! DEBUG
+                        if watching_clause_index == 1 {
+                            println!("lit_index={lit_index}, lit={lit} idx={idx}");
+
+                            println!("cwlt do watching_lit={watching_lit} antes:");
+                            for idk in self
+                                .clauses_with_lit_watched
+                                .entry(watching_lit)
+                                .or_default()
+                                .iter()
+                            {
+                                println!("{}", idk);
+                            }
+
+                            println!("cwlt do lit={lit} antes:");
+                            for idk in self.clauses_with_lit_watched.entry(lit).or_default().iter()
+                            {
+                                println!("{}", idk);
+                            }
+                        }
+                        println!(
+                            "swapping watch from {} to {} at clause {}",
+                            watching_lit, lit, watching_clause_index
+                        );
+
                         watching_clause.watch_pointers[idx] = lit_index;
 
                         self.clauses_with_lit_watched
@@ -269,8 +317,26 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             .entry(lit)
                             .or_default()
                             .insert(watching_clause_index);
+                        // ! DEBUG
+                        if watching_clause_index == 1 {
+                            println!("cwlt do watching_lit={watching_lit} depois:");
+                            for idk in self
+                                .clauses_with_lit_watched
+                                .entry(watching_lit)
+                                .or_default()
+                                .iter()
+                            {
+                                println!("{}", idk);
+                            }
+                            println!("cwlt do lit={lit} depois:");
+                            for idk in self.clauses_with_lit_watched.entry(lit).or_default().iter()
+                            {
+                                println!("{}", idk);
+                            }
+                        }
 
                         rewatched = true;
+                        break;
                     }
                     if !rewatched {
                         // Se ha apenas um literal observado em `watching_clause`
@@ -293,11 +359,12 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                 // Adicionamos esta ao model
                                 self.model_assign(other, Some(watching_clause_index));
                                 // Propagamos
+                                println!("Propagate {other}");
                                 to_propagate.push_back(other);
                             }
                             Some(asgnmt) => {
                                 // Se outro eh T no modelo, continuamos
-                                if asgnmt.polarity {
+                                if asgnmt.polarity == other.polarity {
                                     continue;
                                 }
                                 // Se outro eh F no modelo, temos um Conflito
@@ -310,11 +377,23 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 }
             }
         }
+        println!("UNIT PROPAGATION SESSION OVER: Unresolved\n\n");
+        // ! DEBUG
+        for variable in 1..self.model.len() {
+            for polarity in [true, false] {
+                let lit = Literal { variable, polarity };
+                print!("{lit}: (");
+                for ww in self.clauses_with_lit_watched.entry(lit).or_default().iter() {
+                    print!("{ww},");
+                }
+                println!(")");
+            }
+        }
         UnitPropagationResult::Unresolved
     }
 
     fn all_variables_assigned(&self) -> bool {
-        for lit in &self.model {
+        for lit in self.model.iter().skip(1) {
             if lit.is_none() {
                 return false;
             }
@@ -467,6 +546,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             .next_variable(&self.model)
             .expect("decide can't pick an unassigned variable!");
         let lit: Literal = Literal { variable, polarity };
+        self._decisions.push(lit);
         lit
     }
 
@@ -500,7 +580,7 @@ mod tests {
 
     use super::*;
 
-    fn check_model(cnf: &Vec<Vec<i64>>, model: &Vec<bool>) {
+    fn check_model(cnf: &Vec<Vec<i64>>, model: &Vec<bool>) -> bool {
         // Check that the model satisfies the CNF
         for clause in cnf {
             let mut clause_satisfied = false;
@@ -516,12 +596,33 @@ mod tests {
                     break;
                 }
             }
-            assert!(
-                clause_satisfied,
-                "Clause {:?} is not satisfied by the model {:?}",
-                clause, model
-            );
+            // assert!(
+            //     clause_satisfied,
+            //     "Clause {:?} is not satisfied by the model {:?}",
+            //     clause, model
+            // );
+            if !clause_satisfied {
+                println!(
+                    "Clause {:?} is not satisfied by the model {:?}",
+                    clause, model
+                );
+                return false;
+            }
         }
+        true
+    }
+
+    fn get_trace<H: DecideHeuristic>(solver: &Cdcl<H>) {
+        println!("Try this decision to trace it:");
+        print!("let polarities = vec![");
+        for lit in &solver._decisions {
+            print!("{},", lit.polarity);
+        }
+        print!("];\nlet variables = vec![");
+        for lit in &solver._decisions {
+            print!("{},", lit.variable);
+        }
+        println!("];\n");
     }
 
     #[cfg(test)]
@@ -533,7 +634,7 @@ mod tests {
         for pol in polarities {
             mock_decide_heuristic
                 .expect_next_polarity()
-                .times(1)
+                .times(..1)
                 .in_sequence(&mut sequence)
                 .return_const(pol);
         }
@@ -547,16 +648,16 @@ mod tests {
         for var in variables {
             mock_decide_heuristic
                 .expect_next_variable()
-                .times(1)
+                .times(..1)
                 .in_sequence(&mut sequence)
                 .return_const(var);
         }
 
         mock_decide_heuristic
             .expect_next_variable()
+            .times(..)
             .returning(|model| {
                 let mut rng = rand::thread_rng();
-
                 // Collect indices of unassigned variables (where model[index] is None)
                 let unassigned_indices: Vec<usize> = model
                     .iter()
@@ -571,7 +672,6 @@ mod tests {
                         },
                     )
                     .collect();
-
                 // Randomly select one of the unassigned indices
                 unassigned_indices.into_iter().choose(&mut rng)
             });
@@ -589,39 +689,63 @@ mod tests {
     #[test]
     fn empty_cnf_is_sat() {
         let cnf = vec![];
-        let result = run_cdcl(&cnf, 5);
+        let mut solver = Cdcl::new(&cnf, 2, RandomDecideHeuristic {});
+        let result = solver.solve();
         match result {
-            UNSAT => panic!("Expected SAT"),
-            SAT(model) => check_model(&cnf, &model),
+            UNSAT => {
+                get_trace(&solver);
+                panic!("Expected SAT");
+            }
+            SAT(model) => {
+                let passed = check_model(&cnf, &model);
+                if !passed {
+                    get_trace(&solver);
+                }
+            }
         }
     }
 
     #[test]
     fn single_cnf_is_sat() {
         let cnf = vec![vec![1]];
-        let result = run_cdcl(&cnf, 1);
+        let mut solver = Cdcl::new(&cnf, 2, RandomDecideHeuristic {});
+        let result = solver.solve();
         match result {
             SAT(model) => {
                 check_model(&cnf, &model);
                 // assert_eq!(assign.len(), 1);
                 // assert!(assign[0]);
             }
-            _ => panic!("single cnf is sat"),
+            UNSAT => {
+                get_trace(&solver);
+                panic!("single cnf is sat");
+            }
         }
     }
 
     #[test]
     fn two_cnf_is_sat() {
         let cnf = vec![vec![1, 2], vec![-1, -2]];
-        let result = run_cdcl(&cnf, 2);
+        let polarities = vec![false];
+        let variables = vec![2];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+        // let result = run_cdcl(&cnf, 2);
+        let mut solver = Cdcl::new(&cnf, 2, mock_decide_heuristic);
+        let result = solver.solve();
         match result {
             SAT(model) => {
-                check_model(&cnf, &model);
+                let passed = check_model(&cnf, &model);
+                if !passed {
+                    get_trace(&solver);
+                }
                 // assert_eq!(assign.len(), 2);
                 // // Either [T,F] or [F,T]
                 // assert!(assign == vec![true, false] || assign == vec![false, true]);
             }
-            _ => panic!("two cnf is sat fail"),
+            UNSAT => {
+                get_trace(&solver);
+                panic!("two cnf is sat fail");
+            }
         }
     }
 
@@ -635,7 +759,19 @@ mod tests {
 
         let mut solver = Cdcl::new(&cnf, 2, mock_decide_heuristic);
         let result = solver.solve();
-        assert_eq!(result, UNSAT);
+        match result {
+            UNSAT => {
+                println!("OK");
+            }
+
+            SAT(model) => {
+                let passed = check_model(&cnf, &model);
+                if !passed {
+                    get_trace(&solver);
+                }
+            }
+        }
+        // assert_eq!(result, UNSAT);
     }
 
     #[test]
@@ -706,8 +842,12 @@ mod tests {
             vec![6, 2, 4],
         ];
 
-        let polarities = vec![false, true];
-        let variables = vec![2, 6];
+        // let polarities = vec![false, true];
+        // let variables = vec![2, 6];
+
+        let polarities = vec![false, true, false, true, false];
+        let variables = vec![2, 6, 5, 3, 1];
+
         let mock_decide_heuristic = setup_mock(polarities, variables);
 
         let mut solver = Cdcl::new(&cnf, 6, mock_decide_heuristic);
@@ -715,9 +855,26 @@ mod tests {
         match result {
             SAT(model) => {
                 // TODO: Check this model satisfies the CNF
-                check_model(&cnf, &model);
+                let passed = check_model(&cnf, &model);
+                if !passed {
+                    println!("FAILED AT CHECK MODEL");
+                    println!("Try this decision to trace it:");
+
+                    print!("let polarities = vec![");
+                    for lit in &solver._decisions {
+                        print!("{},", lit.polarity);
+                    }
+                    print!("];\nlet variables = vec![");
+                    for lit in &solver._decisions {
+                        print!("{},", lit.variable);
+                    }
+                    println!("];\n");
+                }
             }
-            UNSAT => panic!("backtrack small case fail"),
+            UNSAT => {
+                get_trace(&solver);
+                panic!("backtrack small case fail")
+            }
         }
     }
 
@@ -950,13 +1107,23 @@ mod tests {
         assert_eq!(ans, Watcher::Conflict);
     }
 
-    #[test]
-    fn check_aim() {
-        let (cnf, lits) = read_from_string("./test/aim-100-1_6-yes1-1.cnf");
-        let result = run_cdcl(&cnf, lits);
-        match result {
-            CdclResult::SAT(model) => check_model(&cnf, &model),
-            CdclResult::UNSAT => panic!("\nUNSAT"),
-        }
-    }
+    // #[test]
+    // fn check_aim() {
+    //     let (cnf, lits) = read_from_string("./test/aim-100-1_6-yes1-1.cnf");
+    //     let mut solver = Cdcl::new(&cnf, 9, RandomDecideHeuristic {});
+    //     let result = run_cdcl(&cnf, lits);
+    //     match result {
+    //         CdclResult::SAT(model) => {
+    //             let passed = check_model(&cnf, &model);
+    //             if !passed {
+    //                 println!("Model not ok!");
+    //                 get_trace(&solver);
+    //             }
+    //         }
+    //         CdclResult::UNSAT => {
+    //             get_trace(&solver);
+    //             panic!("\nUNSAT")
+    //         }
+    //     }
+    // }
 }

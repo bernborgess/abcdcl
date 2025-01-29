@@ -40,7 +40,7 @@
             },
             "args": [
                 "--nocapture",
-                "cdcl::tests::check_aim"
+                "cdcl::tests::backtrack_small_case"
             ],
             "cwd": "${workspaceFolder}"
         }
