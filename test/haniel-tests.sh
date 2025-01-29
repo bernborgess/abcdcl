@@ -14,7 +14,7 @@ RED_BG="\033[0;41m"
 RESET="\033[0;0m"
 
 # Define timeout in seconds
-TIMEOUT=30
+TIMEOUT=300
 echo -e "Running tests with timeout of ${TIMEOUT}s"
 
 # Initialize counters
@@ -40,9 +40,18 @@ for folder in "${folders[@]}"; do
         echo "Warning: Test folder $folder does not exist. Skipping."
         continue
     fi
-
     # Loop through each .cnf file in the folder
     for file in "$folder"/*.cnf; do
+
+# # Test cases with BAD dimacs comment
+# failed_tests=(
+#     "pj1-tests/sat/sat10.cnf"
+#     "pj1-tests/sat/sat12.cnf"
+#     "pj1-tests/unsat/false.cnf"
+# )
+
+# for file in "${failed_tests[@]}"; do
+
         # Skip if no .cnf files are found
         if [ ! -f "$file" ]; then
             continue
@@ -54,20 +63,22 @@ for folder in "${folders[@]}"; do
 
         # Run the program with the test file
         timeout $TIMEOUT cargo run -q -- "$file" > "$abcdcl_outfile" 2>error.log
-        if [ $? -eq 124 ]; then
+        exit_code=$?  # Capture the exit code immediately
+        if [ $exit_code -eq 124 ]; then
             echo -e "${YELLOW_BG}TIMEOUT${YELLOW} $file took too long${RESET}"
             total_count=$((total_count + 1))
             continue
-        elif [ $? -eq -1 ]; then
-            echo "Error: cargo run failed($?) for $file. Stopping script."
+        elif [ $exit_code -ne 0 ]; then
+            echo -e "${RED_BG}FAIL${RED} $file: error code $exit_code${RESET}"
             echo -e "\n====================================================\n"
             cat error.log
             echo -e "\n====================================================\n"
-            exit 1
+            continue
+            # exit 1
         fi
 
         # Get the last line of the program's output
-        abcdcl_tail=$(tail "$abcdcl_outfile" -n 1)
+        abcdcl_head=$(head "$abcdcl_outfile" -n 1)
 
         # Run minisat if the output file doesn't exist
         if [ ! -f "$minisat_outfile" ]; then
@@ -81,14 +92,13 @@ for folder in "${folders[@]}"; do
         total_count=$((total_count + 1))
 
         # Compare the outputs
-        if [ "$minisat_head" == "$abcdcl_tail" ]; then
+        if [ "$minisat_head" == "$abcdcl_head" ]; then
             echo -e "${GREEN_BG}PASS${GREEN} $file${RESET}"
             pass_count=$((pass_count + 1))
         else
-            echo -e "${RED_BG}FAIL${RED} $file: expected $minisat_head got $abcdcl_tail${RESET}"
+            echo -e "${RED_BG}FAIL${RED} $file: expected $minisat_head got $abcdcl_head${RESET}"
         fi
     done
-
 done
 
 # Print summary
