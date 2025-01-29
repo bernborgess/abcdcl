@@ -8,8 +8,8 @@ This project implements a **Conflict-Driven Clause Learning (CDCL)** SAT solver 
 - **Two-Watched Literals**: Optimized unit propagation for improved performance.
 - **DIMACS CNF Input/Output**: Supports standard SAT solver input and output formats.
 - **Optional Features**:
-  - Variable selection using the **VSIDS heuristic**.
-  - Restart strategies (e.g., **Luby sequence**).
+  - Variable selection using the **VSIDS heuristic** (incomplete).
+  - Restart strategies (e.g., **Luby sequence**) (incomplete).
 
 ## Input Format
 
@@ -32,40 +32,40 @@ p cnf 3 2
 
 The output consists of two lines:
 
-1. The first line is `s SATISFIABLE` or `s UNSATISFIABLE`.
-2. If satisfiable, the second line is `v M`, where `M` is a space-separated list of literals in the satisfying assignment.
+1. The first line is `SAT` or `UNSAT`.
+2. If satisfiable, the second line is a space-separated list of literals in the satisfying assignment, ending with `0`.
 
 Example (if satisfiable):
 
 ```
-s SATISFIABLE
-v 1 -2 3
+SAT
+-1 -2 3 0
 ```
 
 Example (if unsatisfiable):
 
 ```
-s UNSATISFIABLE
+UNSAT
 ```
 
 ## Usage
 
 1. Place your DIMACS CNF file (e.g., `input.cnf`) in the project directory.
 2. Run the solver with:
-   ```
-   TODO...
+   ```sh
+   cargo run input.cnf
    ```
 3. View the output in the terminal.
 
 ## Testing
 
 You can test the solver using benchmark files from the [SATLIB](http://www.satlib.org/) repository. To compare performance, you may also use the **MiniSat** solver.
-
-## Performance Comparison
-
-- Measure runtime (in milliseconds) on a selection of benchmarks.
-- Compare results with MiniSat on the same input files.
-- Report the timeout value, hardware specifications, and runtime data.
+```sh
+cd test
+./download-minisat.sh
+./download-tests.sh
+./run.sh
+```
 
 ## References
 

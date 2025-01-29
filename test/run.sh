@@ -24,8 +24,8 @@ fi
 
 benchmarks=(
 #    "f" # all SAT -> f benchmark is too huge, can't run locally.
-#   "dubois" # all UNSAT
-#   "aim" # 48 SAT, 24 UNSAT
+   "dubois" # all UNSAT
+   "aim" # 48 SAT, 24 UNSAT
    "jnh" # 16 SAT, 24 UNSAT
 )
 
