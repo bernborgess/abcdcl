@@ -40,7 +40,7 @@
             },
             "args": [
                 "--nocapture",
-                "cdcl::tests::backtrack_small_case"
+                "cdcl::tests::check_dubois20"
             ],
             "cwd": "${workspaceFolder}"
         }

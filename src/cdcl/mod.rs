@@ -185,6 +185,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             }
                             Some((b, learnt_clause)) => {
                                 // Invocamos `add_learnt_clause` e `backtrack`
+                                // TODO: Check that learn_clause does NOT have repeated literals
                                 let learnt_clause_index = self.add_learnt_clause(&learnt_clause);
                                 self.backtrack(b, learnt_clause_index);
                                 // Atribuímos `b` como novo decision level
