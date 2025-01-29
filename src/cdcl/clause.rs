@@ -1,16 +1,3 @@
-/// Represents different states of a watched literal in the clause.
-/// - `Unit(Literal)`: The clause has become a unit, propagating the literal.
-/// - `Watched(Literal)`: The given literal is actively watched.
-/// - `Satisfied(Literal)`: The clause is already satisfied.
-/// - `Conflict`: Indicates a conflict in the clause.
-#[derive(Debug, PartialEq)]
-pub enum Watcher {
-    Unit(Literal),
-    Watched(Literal),
-    Satisfied(Literal),
-    Conflict,
-}
-
 use super::literal::Literal;
 
 /// Represents a clause in the CNF formula.
