@@ -235,24 +235,16 @@ impl<H: DecideHeuristic> Cdcl<H> {
     }
 
     fn unit_propagation(&mut self, to_propagate: &mut Queue) -> UnitPropagationResult {
-        println!("\n\nNEW UNIT PROPAGATION SESSION");
+        // println!("\n\nNEW UNIT PROPAGATION SESSION");
         // Enquanto ha literais para propagar tomamos `watching_lit`
         while let Some(mut watching_lit) = to_propagate.pop_front() {
             watching_lit = watching_lit.negate();
             // !DEBUG
-            println!("to_propagate iteration with watching_lit={watching_lit}");
+            // println!("to_propagate iteration with watching_lit={watching_lit}");
 
             // Para cada `clause` em que `watching_lit` ocorre,
             if let Some(clause_indices) = self.clauses_with_lit_watched.get(&watching_lit).cloned()
             {
-                // ! DEBUG
-                for idx in &clause_indices {
-                    println!(
-                        "##################### {} is watched in {}",
-                        watching_lit, idx
-                    );
-                }
-
                 for watching_clause_index in clause_indices {
                     let watching_clause = &mut self.formula[watching_clause_index];
                     let mut watched_lits = vec![];
@@ -282,29 +274,11 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         }; // TODO: Readability
 
                         // ! DEBUG
-                        if watching_clause_index == 1 {
-                            println!("lit_index={lit_index}, lit={lit} idx={idx}");
 
-                            println!("cwlt do watching_lit={watching_lit} antes:");
-                            for idk in self
-                                .clauses_with_lit_watched
-                                .entry(watching_lit)
-                                .or_default()
-                                .iter()
-                            {
-                                println!("{}", idk);
-                            }
-
-                            println!("cwlt do lit={lit} antes:");
-                            for idk in self.clauses_with_lit_watched.entry(lit).or_default().iter()
-                            {
-                                println!("{}", idk);
-                            }
-                        }
-                        println!(
-                            "swapping watch from {} to {} at clause {}",
-                            watching_lit, lit, watching_clause_index
-                        );
+                        // println!(
+                        //     "swapping watch from {} to {} at clause {}",
+                        //     watching_lit, lit, watching_clause_index
+                        // );
 
                         watching_clause.watch_pointers[idx] = lit_index;
 
@@ -317,23 +291,6 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             .entry(lit)
                             .or_default()
                             .insert(watching_clause_index);
-                        // ! DEBUG
-                        if watching_clause_index == 1 {
-                            println!("cwlt do watching_lit={watching_lit} depois:");
-                            for idk in self
-                                .clauses_with_lit_watched
-                                .entry(watching_lit)
-                                .or_default()
-                                .iter()
-                            {
-                                println!("{}", idk);
-                            }
-                            println!("cwlt do lit={lit} depois:");
-                            for idk in self.clauses_with_lit_watched.entry(lit).or_default().iter()
-                            {
-                                println!("{}", idk);
-                            }
-                        }
 
                         rewatched = true;
                         break;
@@ -359,7 +316,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                 // Adicionamos esta ao model
                                 self.model_assign(other, Some(watching_clause_index));
                                 // Propagamos
-                                println!("Propagate {other}");
+                                // println!("Propagate {other}");
                                 to_propagate.push_back(other);
                             }
                             Some(asgnmt) => {
@@ -377,18 +334,18 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 }
             }
         }
-        println!("UNIT PROPAGATION SESSION OVER: Unresolved\n\n");
+        // println!("UNIT PROPAGATION SESSION OVER: Unresolved\n\n");
         // ! DEBUG
-        for variable in 1..self.model.len() {
-            for polarity in [true, false] {
-                let lit = Literal { variable, polarity };
-                print!("{lit}: (");
-                for ww in self.clauses_with_lit_watched.entry(lit).or_default().iter() {
-                    print!("{ww},");
-                }
-                println!(")");
-            }
-        }
+        // for variable in 1..self.model.len() {
+        //     for polarity in [true, false] {
+        //         let lit = Literal { variable, polarity };
+        //         print!("{lit}: (");
+        //         for ww in self.clauses_with_lit_watched.entry(lit).or_default().iter() {
+        //             print!("{ww},");
+        //         }
+        //         println!(")");
+        //     }
+        // }
         UnitPropagationResult::Unresolved
     }
 
@@ -634,47 +591,49 @@ mod tests {
         for pol in polarities {
             mock_decide_heuristic
                 .expect_next_polarity()
-                .times(..1)
+                .times(1)
                 .in_sequence(&mut sequence)
                 .return_const(pol);
         }
 
-        mock_decide_heuristic
-            .expect_next_polarity()
-            .returning(rand::random::<bool>);
+        // mock_decide_heuristic
+        //     .expect_next_polarity()
+        //     .returning(rand::random::<bool>);
 
         // Setup answers for `next_variable()`
         let mut sequence = Sequence::new();
         for var in variables {
             mock_decide_heuristic
                 .expect_next_variable()
-                .times(..1)
+                .times(1)
                 .in_sequence(&mut sequence)
                 .return_const(var);
         }
 
-        mock_decide_heuristic
-            .expect_next_variable()
-            .times(..)
-            .returning(|model| {
-                let mut rng = rand::thread_rng();
-                // Collect indices of unassigned variables (where model[index] is None)
-                let unassigned_indices: Vec<usize> = model
-                    .iter()
-                    .enumerate()
-                    .filter_map(
-                        |(index, value)| {
-                            if value.is_none() {
-                                Some(index)
-                            } else {
-                                None
-                            }
-                        },
-                    )
-                    .collect();
-                // Randomly select one of the unassigned indices
-                unassigned_indices.into_iter().choose(&mut rng)
-            });
+        if false {
+            mock_decide_heuristic
+                .expect_next_variable()
+                .times(..)
+                .returning(|model| {
+                    let mut rng = rand::thread_rng();
+                    // Collect indices of unassigned variables (where model[index] is None)
+                    let unassigned_indices: Vec<usize> = model
+                        .iter()
+                        .enumerate()
+                        .filter_map(
+                            |(index, value)| {
+                                if value.is_none() {
+                                    Some(index)
+                                } else {
+                                    None
+                                }
+                            },
+                        )
+                        .collect();
+                    // Randomly select one of the unassigned indices
+                    unassigned_indices.into_iter().choose(&mut rng)
+                });
+        }
 
         mock_decide_heuristic
     }
@@ -845,8 +804,8 @@ mod tests {
         // let polarities = vec![false, true];
         // let variables = vec![2, 6];
 
-        let polarities = vec![false, true, false, true, false];
-        let variables = vec![2, 6, 5, 3, 1];
+        let polarities = vec![false, true];
+        let variables = vec![2, 6];
 
         let mock_decide_heuristic = setup_mock(polarities, variables);
 
@@ -904,9 +863,24 @@ mod tests {
     #[test]
     fn check_dubois20() {
         let (cnf, lits) = read_from_string("./test/dubois20.cnf");
-        let result = run_cdcl(&cnf, lits);
+        let polarities = vec![
+            true, false, false, true, false, false, false, false, false, false, true, false, true,
+            false, false, false, true, false, false, true, true,
+        ];
+
+        let variables = vec![
+            18, 28, 47, 29, 48, 39, 55, 8, 32, 3, 46, 22, 54, 59, 43, 35, 53, 24, 16, 42, 58,
+        ];
+        let mock_decide_heuristic = setup_mock(polarities, variables);
+
+        let mut solver = Cdcl::new(&cnf, lits, mock_decide_heuristic);
+        let result = solver.solve();
         match result {
-            CdclResult::SAT(_) => println!("\nSAT"),
+            CdclResult::SAT(model) => {
+                check_model(&cnf, &model);
+                get_trace(&solver);
+                panic!("EXPECTED UNSAT!");
+            }
             CdclResult::UNSAT => println!("\nUNSAT"),
         }
     }
