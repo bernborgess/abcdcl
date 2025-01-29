@@ -2,11 +2,18 @@
     "rust-analyzer.checkOnSave": true,
     "cSpell.words": [
         "abcdcl",
+        "Andreotti",
         "automock",
         "backjump",
+        "DPLL",
+        "Lachnitt",
         "LLDB",
         "mockall",
+        "Moskewicz",
         "occurlist",
+        "Oliveras",
+        "SATLIB",
+        "Sörensson",
         "VSIDS"
     ]
 }

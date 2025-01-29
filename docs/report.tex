@@ -116,7 +116,7 @@ required careful debugging, algorithmic refinements, and adaptations to external
 This section outlines the key difficulties faced and the lessons learned throughout the process.
 
 One of the initial challenges was correctly following the CDCL algorithm as described in the
-reference materials \cite{CdclTwoWatchedSlides}. The visual representations in the slides were
+reference materials \cite{CdclAlgorithm}. The visual representations in the slides were
 sometimes ambiguous, making it unclear what exact computations were being performed at certain
 stages. A notable example was the selection of the next watched literal, which we initially
 misunderstood due to implicit details, actually needs to \textit{loop back around} sometimes,
@@ -169,17 +169,16 @@ In the conclusion, summarize the key findings and suggest potential improvements
 \end{itemize}
 
 \begin{thebibliography}{00}
-    % TODO: Fix refs
-    \bibitem{CdclAlgorithm}         ? ``?'', January of 2025, Available at \url{?}.
-    \bibitem{RustLang}              ? ``?'', January of 2025, Available at \url{?}.
-    \bibitem{Carcara}               ? ``?'', January of 2025, Available at \url{?}.
-    \bibitem{SatBenchmarks}         ? ``?'', January of 2025, Available at \url{?}.
+    \bibitem{CdclAlgorithm}         A. Oliveras, E. Rodriguez-Carbonell ``From DPLL to CDCL SAT solvers'', January of 2025, Available at \url{https://www.cs.upc.edu/~oliveras/LAI/cdcl.pdf}.
+    \bibitem{RustLang}              ``The Rust Reference'', January of 2025, Available at \url{https://doc.rust-lang.org/reference/index.html}.
+    \bibitem{Carcara}               B. Andreotti, H. Lachnitt, H. Barbosa ``Carcara: An Efficient Proof Checker and Elaborator for SMT Proofs in the Alethe Format'', April of 2023, Available at \url{https://link.springer.com/chapter/10.1007/978-3-031-30823-9\_19}.
+    \bibitem{SatBenchmarks}         ``SATLIB - Benchmark Problems'', January of 2025, Available at \url{https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html}.
     \bibitem{AbcdclGithub}          B. Borges, A. Carvalho ``Atila - Bernardo - CDCL SAT Solver'', January of 2025, Available at \url{https://github.com/bernborgess/abcdcl}.
-    \bibitem{Minisat}               ? ``?'', January of 2025, Available at \url{?}.
-    \bibitem{CdclTwoWatchedSlides}  B. Andreotti, H. Lachnitt, H. Barbosa ``Carcara: An Efficient Proof Checker and Elaborator for SMT Proofs in the Alethe Format'', Abril de 2023, Acesso em https://link.springer.com/chapter/10.1007/978-3-031-30823-9\_19.
-    \bibitem{LLDB}                  B. Andreotti, H. Lachnitt, H. Barbosa ``Carcara: An Efficient Proof Checker and Elaborator for SMT Proofs in the Alethe Format'', Abril de 2023, Acesso em https://link.springer.com/chapter/10.1007/978-3-031-30823-9\_19.
-    \bibitem{DimacsCrate}           B. Andreotti, H. Lachnitt, H. Barbosa ``Carcara: An Efficient Proof Checker and Elaborator for SMT Proofs in the Alethe Format'', Abril de 2023, Acesso em https://link.springer.com/chapter/10.1007/978-3-031-30823-9\_19.
-    \bibitem{DimacsFormat}          B. Andreotti, H. Lachnitt, H. Barbosa ``Carcara: An Efficient Proof Checker and Elaborator for SMT Proofs in the Alethe Format'', Abril de 2023, Acesso em https://link.springer.com/chapter/10.1007/978-3-031-30823-9\_19.
+    \bibitem{Minisat}               N. Eén, N. Sörensson ``The MiniSat Page'', January of 2025, Available at \url{http://minisat.se/MiniSat.html}.
+    \bibitem{VSIDS}                 M. Moskewicz, C. Madigan, Y. Zhao, L. Zhang, S. Malik ``Chaff: Engineering an Efficient SAT Solver'', January of 2025, Available at \url{https://www.princeton.edu/~chaff/publication/DAC2001v56.pdf}.
+    \bibitem{LLDB}                  ``The LLDB Debugger'', January of 2025, Available at \url{https://lldb.llvm.org}.
+    \bibitem{DimacsCrate}           ``Crate dimacs - The parser facility for parsing .cnf and .sat files as specified in the DIMACS format specification'', January of 2025, Available at \url{https://docs.rs/dimacs/0.2.0/dimacs/index.html}.
+    \bibitem{DimacsFormat}          ``DIMACS CNF Format'', January of 2025, Available at \url{https://satcompetition.github.io//2009/format-benchmarks2009.html}.
 \end{thebibliography}
 
 \newpage
