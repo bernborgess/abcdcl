@@ -94,15 +94,34 @@ enum UnitPropagationResult {
 
 fn resolve(clause_a: &Clause, clause_b: &Clause, pivot: Literal) -> Clause {
     // Combine the two slices into one vector
-    let mut resolved_lits: Vec<_> = clause_a
+    // let mut resolved_lits: Vec<_> = clause_a
+    //     .literals
+    //     .iter()
+    //     .chain(clause_b.literals.iter())
+    //     .cloned()
+    //     .collect();
+
+    // // Filter out the pivot element
+    // resolved_lits.retain(|&lit| lit.variable != pivot.variable);
+
+    // Clause::new(resolved_lits)
+
+    let mut seen = std::collections::HashSet::new();
+    let mut resolved_lits = Vec::new();
+
+    for lit in clause_a
         .literals
         .iter()
         .chain(clause_b.literals.iter())
         .cloned()
-        .collect();
-
-    // Filter out the pivot element
-    resolved_lits.retain(|&lit| lit.variable != pivot.variable);
+    {
+        if lit.variable != pivot.variable {
+            // Add to resolved_lits only if not already seen
+            if seen.insert(lit) {
+                resolved_lits.push(lit);
+            }
+        }
+    }
 
     Clause::new(resolved_lits)
 }
@@ -157,6 +176,15 @@ impl<H: DecideHeuristic> Cdcl<H> {
             // Invocamos o método `decide`, obtendo um literal
             let lit = self.decide();
 
+            // ! DEBUG
+            if self.model[lit.variable].is_some() {
+                panic!(
+                    ">>>>>>> DECIDE RETURNED LITERAL ALREADY IN MODEL!!! model:[{}:{}], lit={lit}",
+                    lit.variable,
+                    self.model[lit.variable].unwrap().polarity
+                );
+            }
+
             // Incrementamos o `decision_level`
             self.decision_level += 1;
 
@@ -185,24 +213,19 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             }
                             Some((b, learnt_clause)) => {
                                 // Invocamos `add_learnt_clause` e `backtrack`
-                                // TODO: Check that learn_clause does NOT have repeated literals
                                 let learnt_clause_index = self.add_learnt_clause(&learnt_clause);
-                                self.backtrack(b, learnt_clause_index);
+                                self.backtrack(b);
                                 // Atribuímos `b` como novo decision level
                                 self.decision_level = b;
 
                                 // Nesse momento ha apenas um literal `lit` em `learnt_clause`
                                 // e nao no `model`
-                                let lit: Literal = learnt_clause
+                                let learned_lit: Literal = learnt_clause
                                     .literals
                                     .iter()
                                     .find(|lit| self.model[lit.variable].is_none())
                                     .cloned()
                                     .expect("No literal was learned");
-
-                                // A negação de lit eh a opção que resta, pois essa decisão
-                                // que levou ao conflito.
-                                let learned_lit = lit.negate();
 
                                 // Adicionamos a negação de `lit` ao `model`, com antecedente `learnt_clause`
                                 self.model_assign(learned_lit, Some(learnt_clause_index));
@@ -241,7 +264,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         while let Some(mut watching_lit) = to_propagate.pop_front() {
             watching_lit = watching_lit.negate();
             // !DEBUG
-            // println!("to_propagate iteration with watching_lit={watching_lit}");
+            println!("to_propagate iteration with watching_lit={watching_lit}");
 
             // Para cada `clause` em que `watching_lit` ocorre,
             if let Some(clause_indices) = self.clauses_with_lit_watched.get(&watching_lit).cloned()
@@ -381,7 +404,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
         let mut learnt_clause = conflict_clause.clone();
 
-        while literals.len() != 1 {
+        while literals.len() > 1 {
             // E o antecedente existe i.e. ele foi propagado
             literals.retain(|lit| {
                 self.model[lit.variable]
@@ -389,11 +412,11 @@ impl<H: DecideHeuristic> Cdcl<H> {
                     .antecedent
                     .is_some()
             });
-            let literal = literals.front();
+            let literal = literals.pop_front();
             if literal.is_none() {
                 break;
             }
-            let literal = *literal.unwrap();
+            let literal = literal.unwrap();
 
             // Tomamos o seu `antecedent` i.e. os literais da clausula unitária que propagou esse literal
             let antecedent = &self.model[literal.variable]?.antecedent;
@@ -482,17 +505,15 @@ impl<H: DecideHeuristic> Cdcl<H> {
         new_clause_id
     }
 
-    //muda para None a atribuição de variáveis com decision level maior que b
-    //retorna a fila de literais que devem propagados para concluir o literal de maior decision level na cláusula aprendida
-    fn backtrack(&mut self, b: usize, learnt_clause_index: ClauseIndex) {
-        for lit in &self.formula[learnt_clause_index].literals {
-            if let Some(ass) = self.model[lit.variable] {
-                if ass.dl <= b {
-                    continue;
+    // Remove atribuição de variáveis com decision level maior que b
+    fn backtrack(&mut self, b: usize) {
+        self.model.iter_mut().for_each(|oas| {
+            if let Some(asgnmt) = oas {
+                if asgnmt.dl > b {
+                    *oas = None;
                 }
-                self.model[lit.variable] = None;
             }
-        }
+        });
     }
 
     // Chooses a variable and a value to it
@@ -597,9 +618,9 @@ mod tests {
                 .return_const(pol);
         }
 
-        // mock_decide_heuristic
-        //     .expect_next_polarity()
-        //     .returning(rand::random::<bool>);
+        mock_decide_heuristic
+            .expect_next_polarity()
+            .returning(rand::random::<bool>);
 
         // Setup answers for `next_variable()`
         let mut sequence = Sequence::new();
@@ -611,7 +632,7 @@ mod tests {
                 .return_const(var);
         }
 
-        if false {
+        if true {
             mock_decide_heuristic
                 .expect_next_variable()
                 .times(..)
@@ -621,15 +642,13 @@ mod tests {
                     let unassigned_indices: Vec<usize> = model
                         .iter()
                         .enumerate()
-                        .filter_map(
-                            |(index, value)| {
-                                if value.is_none() {
-                                    Some(index)
-                                } else {
-                                    None
-                                }
-                            },
-                        )
+                        .filter_map(|(index, value)| {
+                            if value.is_none() && index != 0 {
+                                Some(index)
+                            } else {
+                                None
+                            }
+                        })
                         .collect();
                     // Randomly select one of the unassigned indices
                     unassigned_indices.into_iter().choose(&mut rng)
@@ -864,6 +883,16 @@ mod tests {
     #[test]
     fn check_dubois20() {
         let (cnf, lits) = read_from_string("./test/dubois20.cnf");
+
+        // let polarities = vec![
+        //     true, false, false, true, false, false, false, false, false, false, true, false, true,
+        //     false, false, false, true, false, false, true, true, true, false, false, false,
+        // ];
+        // let variables = vec![
+        //     18, 28, 47, 29, 48, 39, 55, 8, 32, 3, 46, 22, 54, 59, 43, 35, 53, 24, 16, 42, 58, 38,
+        //     12, 34, 16,
+        // ];
+
         let polarities = vec![
             true, false, false, true, false, false, false, false, false, false, true, false, true,
             false, false, false, true, false, false, true, true,
@@ -872,6 +901,15 @@ mod tests {
         let variables = vec![
             18, 28, 47, 29, 48, 39, 55, 8, 32, 3, 46, 22, 54, 59, 43, 35, 53, 24, 16, 42, 58,
         ];
+
+        // let polarities = vec![
+        //     true, false, false, true, false, false, false, false, false, false, true, false, true,
+        //     false, false, false, true, false, false, true, true, false, true, false, true,
+        // ];
+        // let variables = vec![
+        //     18, 28, 47, 29, 48, 39, 55, 8, 32, 3, 46, 22, 54, 59, 43, 35, 53, 24, 16, 42, 58, 16,
+        //     44, 51, 41,
+        // ];
         let mock_decide_heuristic = setup_mock(polarities, variables);
 
         let mut solver = Cdcl::new(&cnf, lits, mock_decide_heuristic);
