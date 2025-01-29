@@ -21,14 +21,18 @@ use CdclResult::*;
 type Queue = VecDeque<Literal>;
 type ClauseIndex = usize;
 
+/// Defines an interface for decision heuristics.
+/// Provides methods to choose a random variable and its polarity.
 #[automock]
 pub trait DecideHeuristic {
-    // Gets a random boolean
+    /// Gets a random boolean
     fn next_polarity(&self) -> bool;
-    // Gets a random variable, if any exist
+    /// Gets a random variable, if any exist
     fn next_variable(&self, model: &[Option<Assignment>]) -> Option<usize>;
 }
 
+/// Implements a random decision heuristic.
+/// Uses Rust's RNG to select variable assignments.
 pub struct RandomDecideHeuristic {}
 
 impl DecideHeuristic for RandomDecideHeuristic {
@@ -60,31 +64,33 @@ impl DecideHeuristic for RandomDecideHeuristic {
     }
 }
 
+/// Runs the CDCL solver on a given CNF formula.
+/// - Initializes the solver with a random heuristic.
+/// - Returns `CdclResult` indicating SAT or UNSAT.
 pub fn run_cdcl(cnf: &[Vec<i64>], number_of_atoms: usize) -> CdclResult {
     let mut solver = Cdcl::new(cnf, number_of_atoms, RandomDecideHeuristic {}); // Uses rust RNG
     solver.solve()
 }
 
+/// Represents the result of the CDCL solver.
+/// - `UNSAT`: The formula is unsatisfiable.
+/// - `SAT(Vec<bool>)`: The formula is satisfiable with the given assignment.
 #[derive(Debug, PartialEq)]
 pub enum CdclResult {
     UNSAT,
     SAT(Vec<bool>),
 }
 
-pub struct Cdcl<H: DecideHeuristic> {
-    pub formula: Vec<Clause>,
-    pub decision_level: usize,
-    model: Vec<Option<Assignment>>,
-    clauses_with_lit_watched: HashMap<Literal, HashSet<ClauseIndex>>,
-    decide_heuristic: H,
-}
-
+/// Represents the result of unit propagation.
+/// - `Unresolved`: No conflicts detected.
+/// - `Conflict(ClauseIndex)`: A conflict was found at a specific clause.
 enum UnitPropagationResult {
     Unresolved,
     Conflict(ClauseIndex),
 }
 
-/// Performs resolution on clauses with `pivot` literal
+/// Performs resolution on two clauses using a pivot literal.
+/// Generates a new clause without the pivot literal.
 fn resolve(clause_a: &Clause, clause_b: &Clause, pivot: Literal) -> Clause {
     let mut seen = std::collections::HashSet::new();
     let mut resolved_lits = Vec::new();
@@ -104,7 +110,20 @@ fn resolve(clause_a: &Clause, clause_b: &Clause, pivot: Literal) -> Clause {
     Clause::new(resolved_lits)
 }
 
+/// Implements the core CDCL solver.
+/// - Stores the formula, decision level, assignments, and watched literals.
+/// - Uses a heuristic to decide variable assignments.
+pub struct Cdcl<H: DecideHeuristic> {
+    pub formula: Vec<Clause>,
+    pub decision_level: usize,
+    model: Vec<Option<Assignment>>,
+    clauses_with_lit_watched: HashMap<Literal, HashSet<ClauseIndex>>,
+    decide_heuristic: H,
+}
+
 impl<H: DecideHeuristic> Cdcl<H> {
+    /// Constructs a new CDCL solver.
+    /// - Converts the raw CNF formula into internal data structures.
     #[must_use]
     pub fn new(raw_cnf: &[Vec<i64>], number_of_atoms: usize, decide_heuristic: H) -> Self {
         Cdcl {
@@ -116,13 +135,15 @@ impl<H: DecideHeuristic> Cdcl<H> {
         }
     }
 
+    /// Main solving loop implementing the CDCL algorithm.
+    /// Runs unit propagation, decision-making, conflict analysis, and backtracking.
     pub fn solve(&mut self) -> CdclResult {
-        // Primeiramente obtemos a `formula` e inicializamos os `watch_pointers` e
-        // `clauses_with_lit_watched` com os primeiros dois literais de cada clausula
+        // First we get the `formula` and initialize the `watch_pointers` and
+        // `clauses_with_lit_watched` with the first two literals of each clause
         self.init_watches();
 
-        // Para cada clausula com um único literal, adicionamos a negação deste a fila
-        // `to_propagate`, caso esta variável ja nao ocorra no `model`
+        // For each clause with a single literal, we add its negation to the queue
+        // `to_propagate`, if this variable does not already occur in the `model`
         let mut to_propagate: Queue = VecDeque::new();
         for clause_index in 0..self.formula.len() {
             let clause = &self.formula[clause_index];
@@ -131,57 +152,57 @@ impl<H: DecideHeuristic> Cdcl<H> {
             }
             let lit = clause.literals[0];
             if self.model[lit.variable].is_none() {
-                // Adicionamos ao model
+                // Add to the model
                 self.model[lit.variable] =
                     Some(Assignment::new(lit.polarity, 0, Some(clause_index)));
-                // Propagamos
+                // Propagate it
                 to_propagate.push_back(lit);
             }
         }
 
-        // Invocamos o método `unit_propagation` e notamos o resultado
-        // Se reason for "conflict", temos uma contradição, retornamos UNSAT.
+        // We call the `unit_propagation` method and note the result
+        // If reason is "conflict", we have a contradiction, we return UNSAT.
         if let UnitPropagationResult::Conflict(_) = self.unit_propagation(&mut to_propagate) {
             return UNSAT;
         }
 
-        // Enquanto nao tivermos uma valoração em `model` para todas as variáveis de `formula`
+        // Until we have a value in `model` for all `formula` variables
         while !self.all_variables_assigned() {
-            // Invocamos o método `decide`, obtendo um literal
+            // We invoke the `decide` method, obtaining a literal
             let lit = self.decide();
 
-            // Incrementamos o `decision_level`
+            // We increase `decision_level`
             self.decision_level += 1;
 
-            // Adicionamos `lit` ao `model`
+            // Add `lit` to the `model`
             self.model_assign(lit, None);
 
-            // Atribuímos a negação de `lit` para a fila `to_propagate`
+            // We assign `lit` to the `to_propagate` queue
             to_propagate.clear();
             to_propagate.push_back(lit);
 
             loop {
-                // Invocamos `unit_propagation`
+                // Invoke `unit_propagation`
                 match self.unit_propagation(&mut to_propagate) {
-                    // Se `reason` nao for "conflict", saímos do loop para decidir novamente
+                    // If `reason` is not "conflict", we exit the loop to decide again
                     UnitPropagationResult::Unresolved => break,
                     UnitPropagationResult::Conflict(conflict_clause_index) => {
-                        // Invocamos `conflict_analysis` obtendo `b` e `learnt_clause`
+                        // Invoke `conflict_analysis` getting `b` and `learn_clause`
                         match self.conflict_analysis(conflict_clause_index) {
-                            // se falhar retornamos UNSAT
                             None => {
+                                // if it fails we return UNSAT
                                 return UNSAT;
                             }
                             Some((b, learnt_clause)) => {
-                                // Invocamos `add_learnt_clause` e `backtrack`
+                                // Invoke `add_learnt_clause` and `backtrack`
                                 let learnt_clause_index = self.add_learnt_clause(&learnt_clause);
                                 self.backtrack(b);
 
-                                // Atribuímos `b` como novo decision level
+                                // Assign `b` as the new decision level
                                 self.decision_level = b;
 
-                                // Nesse momento ha apenas um literal `lit` em `learnt_clause`
-                                // e nao no `model`
+                                // At this point there is only one literal `lit` in `learnt_clause`
+                                // and not in `model`
                                 let learned_lit: Literal = learnt_clause
                                     .literals
                                     .iter()
@@ -189,10 +210,10 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                     .cloned()
                                     .expect("No literal was learned");
 
-                                // Adicionamos a negação de `lit` ao `model`, com antecedente `learnt_clause`
+                                // Add `learned_lit` to `model`, with antecedent `learnt_clause`
                                 self.model_assign(learned_lit, Some(learnt_clause_index));
 
-                                // `to_propagate` sera agora apenas `learned_lit`
+                                // `to_propagate` will now be just `learned_lit`
                                 to_propagate.clear();
                                 to_propagate.push_back(learned_lit);
                             }
@@ -204,14 +225,14 @@ impl<H: DecideHeuristic> Cdcl<H> {
         self.yield_model()
     }
 
-    /// Inicializamos os `watch_pointers` e `clauses_with_lit_watched`
-    /// com os primeiros dois literais de cada clausula
+    /// Initializes watched literals for each clause.
+    /// Optimizes unit propagation by reducing clause scans.
     fn init_watches(&mut self) {
         for (clause_index, clause) in self.formula.iter().enumerate() {
             for lit_index in 0..(min(clause.literals.len(), 2)) {
                 let lit = clause.literals[lit_index];
-                // Adicione o índice da clausula ao conjunto de
-                // clausulas observadas por este literal
+                // Add the clause index to the set of
+                // clauses observed by this literal
                 self.clauses_with_lit_watched
                     .entry(lit)
                     .or_default()
@@ -220,12 +241,14 @@ impl<H: DecideHeuristic> Cdcl<H> {
         }
     }
 
+    /// Performs unit propagation to simplify clauses.
+    /// Detects conflicts if a clause becomes empty.
     fn unit_propagation(&mut self, to_propagate: &mut Queue) -> UnitPropagationResult {
-        // Enquanto ha literais para propagar tomamos `watching_lit`
+        // While there are literals to propagate we take `watching_lit`
         while let Some(mut watching_lit) = to_propagate.pop_front() {
             watching_lit = watching_lit.negate();
 
-            // Para cada `clause` em que `watching_lit` ocorre,
+            // For each `clause` in which `watching_lit` occurs,
             if let Some(clause_indices) = self.clauses_with_lit_watched.get(&watching_lit).cloned()
             {
                 for watching_clause_index in clause_indices {
@@ -236,7 +259,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                     }
 
                     let mut rewatched = false;
-                    // Para cada literal nessa `clause`
+                    // For each literal in this `clause`
                     for (lit_index, &lit) in watching_clause.literals.iter().enumerate() {
                         if watched_lits.contains(&lit) {
                             continue;
@@ -246,8 +269,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
                                 continue;
                             }
                         }
-                        // Se encontramos um `lit` nao observado e discordando do model
-                        // Começamos a observar `lit`, em vez de `watching_lit`
+                        // If we find an unobserved `lit` that disagrees with the model
+                        // We start observing `lit`, instead of `watching_lit`
                         let idx = if watching_clause.literals[watching_clause.watch_pointers[0]]
                             == watching_lit
                         {
@@ -272,12 +295,12 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         break;
                     }
                     if !rewatched {
-                        // Se ha apenas um literal observado em `watching_clause`
+                        // If there is only one literal watched in `watching_clause`
                         if watching_clause.watch_pointers[0] == watching_clause.watch_pointers[1] {
-                            // retornamos um conflito
+                            // Return a conflict
                             return UnitPropagationResult::Conflict(watching_clause_index);
                         }
-                        // Caso contrario tomamos `other` o outro literal observado.
+                        // Otherwise we take `other` as the other observed literal.
                         let other: Literal = if watching_lit
                             == watching_clause.literals[watching_clause.watch_pointers[0]]
                         {
@@ -287,20 +310,18 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         }; // TODO: readability
 
                         match self.model[other.variable] {
-                            // Se `other` nao esta definido no model
                             None => {
-                                // Adicionamos esta ao model
+                                // If `other` is not defined in the model
+                                // We add it to the model
                                 self.model_assign(other, Some(watching_clause_index));
-                                // Propagamos
                                 to_propagate.push_back(other);
                             }
                             Some(asgnmt) => {
-                                // Se outro valido no modelo, continuamos
+                                // If `other` is valid in the model, we continue
                                 if asgnmt.polarity == other.polarity {
                                     continue;
-                                }
-                                // Se outro discorda do modelo, temos um Conflito
-                                else {
+                                } else {
+                                    // If `other` disagrees with the model, we have a Conflict
                                     return UnitPropagationResult::Conflict(watching_clause_index);
                                 }
                             }
@@ -312,6 +333,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
         UnitPropagationResult::Unresolved
     }
 
+    /// Checks if all variables have been assigned.
+    /// Used as a termination condition for solving.
     fn all_variables_assigned(&self) -> bool {
         for lit in self.model.iter().skip(1) {
             if lit.is_none() {
@@ -321,7 +344,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
         true
     }
 
-    /// Returns what decision level needs to be decremented
+    /// Analyzes conflicts to determine the backtrack level.
+    /// Returns the decision level and learned clause if applicable.
     fn conflict_analysis(&self, conflict_clause_index: ClauseIndex) -> Option<(usize, Clause)> {
         if self.decision_level == 0 {
             return None;
@@ -329,8 +353,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
         let conflict_clause = &self.formula[conflict_clause_index];
 
-        // Para cada `literal` da `conflict_clause`
-        // Cujo decision level eh o atual
+        // For each `literal` of the `conflict clause`
+        // Whose decision level is the current one
         let mut literals: Queue = conflict_clause
             .literals
             .iter()
@@ -344,7 +368,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         let mut learnt_clause = conflict_clause.clone();
 
         while literals.len() > 1 {
-            // E o antecedente existe i.e. ele foi propagado
+            // And the antecedent exists i.e. it was propagated
             literals.retain(|lit| {
                 self.model[lit.variable]
                     .expect("Conflict should be assigned for all variables")
@@ -357,18 +381,18 @@ impl<H: DecideHeuristic> Cdcl<H> {
             }
             let literal = literal.unwrap();
 
-            // Tomamos o seu `antecedent` i.e. os literais da clausula unitária que propagou esse literal
+            // We take its `antecedent` i.e. the literals of the unit clause that propagated this literal
             let antecedent = &self.model[literal.variable]?.antecedent;
             if antecedent.is_none() {
                 break;
             }
             let antecedent = &self.formula[antecedent.unwrap()];
 
-            // Calculamos a `resolution` de `learnt_clause` e `antecedent` com pivô `literal`
-            // A clausula resolvida eh a nova clausula conflitante, chamada "aprendida"
+            // We calculate the `resolution` of `learnt_clause` and `antecedent` with `literal` pivot
+            // The resolved clause is the new conflicting clause, called "learnt_clause"
             learnt_clause = resolve(&learnt_clause, antecedent, literal);
 
-            // Filtre o decision_level atual
+            // Filter the current decision_level
             literals = learnt_clause
                 .literals
                 .iter()
@@ -380,19 +404,19 @@ impl<H: DecideHeuristic> Cdcl<H> {
                 .collect();
         }
 
-        // Temos uma clausula aprendida `learnt_clause`
-        // Analisamos o decision level dos literais contidos nessa clausula
+        // We have a learned clause `learnt_clause`
+        // We analyze the decision level of the literals contained in this clause
 
-        // Se forem todos iguais, retornamos b = 0 e learnt_clause
-        // Caso contrario, calculamos b para o (segundo) maior decision level em aprendida
+        // If they are all the same, we return b = 0 and learnt_clause
+        // Otherwise, we calculate b for the (second) highest decision level in learned_clause
         let mut b = 0;
         for lit in &learnt_clause.literals {
             match self.model[lit.variable] {
                 None => continue,
                 Some(asgnmt) => {
                     if asgnmt.dl < self.decision_level {
-                        // Armazena o maior decision level encontrado,
-                        // quando menor que o `self.decision_level`
+                        // Store the highest decision level found,
+                        // when smaller than `self.decision_level`
                         b = max(b, asgnmt.dl);
                     }
                 }
@@ -401,14 +425,14 @@ impl<H: DecideHeuristic> Cdcl<H> {
         Some((b, learnt_clause))
     }
 
-    /// Add a new clause and prepares the watched literals
-    /// Returns the index of the new clause
+    /// Adds a newly learned clause to the formula and updates watched literals.
+    /// Returns the index of the new clause.
     fn add_learnt_clause(&mut self, learnt_clause: &Clause) -> ClauseIndex {
         let new_clause_id = self.formula.len();
-        // Adicione `learnt_clause` as clausulas da formula
+        // Add `learnt clause` to the formula clauses
         self.formula.push(learnt_clause.clone());
 
-        // Se houver somente um literal na clausula terminamos
+        // If there is only one literal in the clause we are done
         if learnt_clause.literals.len() < 2 {
             let lit = learnt_clause.literals[0];
             self.clauses_with_lit_watched
@@ -418,13 +442,12 @@ impl<H: DecideHeuristic> Cdcl<H> {
             self.formula[new_clause_id].watch_pointers[0] = 0;
             return new_clause_id;
         }
-
-        // Atribua `watch_pointers` aos dois literais de `learnt_clause`
-        // com maior decision level
+        // Assign `watch_pointers` to the two literals of `learnt_clause`
+        // with higher decision level
         let mut heap_of_two = BinaryHeap::with_capacity(2);
         for (literal_index, literal) in learnt_clause.literals.iter().enumerate() {
             if let Some(asgnmt) = self.model[literal.variable] {
-                // Manter os dois melhores na heap
+                // Keep the best two in the heap
                 heap_of_two.push(Reverse((asgnmt.dl, literal, literal_index)));
                 while heap_of_two.len() > 2 {
                     heap_of_two.pop();
@@ -433,7 +456,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         }
         for (i, Reverse((_, to_watch_lit, lit_index))) in heap_of_two.into_vec().iter().enumerate()
         {
-            // Atualize `clauses_with_lit_watched` com `learnt_clause` para estes literais
+            // Update `clauses_with_lit_watched` with `learnt_clause` for these literals
             self.clauses_with_lit_watched
                 .entry(**to_watch_lit)
                 .or_default()
@@ -444,7 +467,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         new_clause_id
     }
 
-    // Remove atribuição de variáveis com decision level maior que b
+    /// Backtracks to a given decision level, undoing assignments above it.
     fn backtrack(&mut self, b: usize) {
         self.model.iter_mut().for_each(|oas| {
             if let Some(asgnmt) = oas {
@@ -455,8 +478,8 @@ impl<H: DecideHeuristic> Cdcl<H> {
         });
     }
 
-    // Chooses a variable and a value to it
-    // Panics if no variable is unassigned
+    /// Chooses the next variable to assign using the heuristic.
+    /// Panics if no unassigned variables remain.
     fn decide(&mut self) -> Literal {
         let polarity = self.decide_heuristic.next_polarity();
         let variable = self
@@ -467,6 +490,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         lit
     }
 
+    /// Assigns a value to a variable and records its antecedent if applicable.
     fn model_assign(&mut self, lit: Literal, antecedent: Option<ClauseIndex>) {
         self.model[lit.variable] = Some(Assignment {
             polarity: lit.polarity,
@@ -475,6 +499,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
         });
     }
 
+    /// Returns the current model as a satisfying assignment if the formula is satisfiable.
     pub fn yield_model(&self) -> CdclResult {
         let vanilla_assignment = Assignment {
             polarity: false,

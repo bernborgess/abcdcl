@@ -1,6 +1,9 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+/// Represents a literal in a CNF formula.
+/// - `variable`: The variable index associated with this literal.
+/// - `polarity`: Boolean indicating whether the literal is positive (`true`) or negated (`false`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Literal {
     pub variable: usize,
@@ -8,7 +11,10 @@ pub struct Literal {
 }
 
 impl Literal {
-    // Constructor to create a new Literal
+    /// Constructs a new `Literal` from an integer value.
+    /// - Positive values represent positive literals.
+    /// - Negative values represent negated literals.
+    /// - Panics if `val` is `0`.
     pub fn new(val: &i64) -> Self {
         if *val == 0 {
             panic!("0 cannot be a literal");
@@ -19,7 +25,8 @@ impl Literal {
         }
     }
 
-    // Method to return the negation of the literal
+    /// Returns the negation of this literal.
+    /// - Flips the polarity while keeping the variable the same.
     pub fn negate(self) -> Self {
         Literal {
             variable: self.variable,
