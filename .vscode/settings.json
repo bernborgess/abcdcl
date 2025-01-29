@@ -4,7 +4,9 @@
         "abcdcl",
         "automock",
         "backjump",
+        "LLDB",
         "mockall",
-        "occurlist"
+        "occurlist",
+        "VSIDS"
     ]
 }
