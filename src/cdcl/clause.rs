@@ -40,4 +40,19 @@ impl Clause {
             .map(Clause::new)
             .collect()
     }
+
+    /// Returns the index (0 or 1) of the watch pointer that matches the given literal.
+    pub fn get_watch_index(&self, lit: Literal) -> usize {
+        if self.literals[self.watch_pointers[0]] == lit {
+            0
+        } else {
+            1
+        }
+    }
+
+    /// Returns the other watched literal given one of the watched literals.
+    pub fn get_other_watched(&self, lit: Literal) -> Literal {
+        let other_idx = 1 - self.get_watch_index(lit);
+        self.literals[self.watch_pointers[other_idx]]
+    }
 }

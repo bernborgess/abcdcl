@@ -271,13 +271,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                         }
                         // If we find an unobserved `lit` that disagrees with the model
                         // We start observing `lit`, instead of `watching_lit`
-                        let idx = if watching_clause.literals[watching_clause.watch_pointers[0]]
-                            == watching_lit
-                        {
-                            0
-                        } else {
-                            1
-                        }; // TODO: Readability
+                        let idx = watching_clause.get_watch_index(watching_lit);
 
                         watching_clause.watch_pointers[idx] = lit_index;
 
@@ -301,13 +295,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
                             return UnitPropagationResult::Conflict(watching_clause_index);
                         }
                         // Otherwise we take `other` as the other observed literal.
-                        let other: Literal = if watching_lit
-                            == watching_clause.literals[watching_clause.watch_pointers[0]]
-                        {
-                            watching_clause.literals[watching_clause.watch_pointers[1]]
-                        } else {
-                            watching_clause.literals[watching_clause.watch_pointers[0]]
-                        }; // TODO: readability
+                        let other: Literal = watching_clause.get_other_watched(watching_lit);
 
                         match self.model[other.variable] {
                             None => {
