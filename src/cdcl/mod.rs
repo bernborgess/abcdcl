@@ -427,13 +427,9 @@ impl<H: DecideHeuristic> Cdcl<H> {
     /// Chooses the next variable to assign using the heuristic.
     /// Panics if no unassigned variables remain.
     fn decide(&mut self) -> Literal {
-        let polarity = self.decide_heuristic.next_polarity();
-        let variable = self
-            .decide_heuristic
-            .next_variable(&self.model)
-            .expect("decide can't pick an unassigned variable!");
-        let lit: Literal = Literal { variable, polarity };
-        lit
+        self.decide_heuristic
+            .next_literal(&self.model)
+            .expect("decide can't pick an unassigned variable!")
     }
 
     /// Assigns a value to a variable and records its antecedent if applicable.
@@ -509,7 +505,7 @@ mod tests {
 
     #[cfg(test)]
     fn setup_mock(polarities: Vec<bool>, variables: Vec<usize>) -> MockDecideHeuristic {
-        use rand::seq::IteratorRandom;
+        use rand::{seq::IteratorRandom, Rng};
 
         let mut mock_decide_heuristic = MockDecideHeuristic::new();
 
@@ -523,36 +519,24 @@ mod tests {
             .expect_clause_added_signal()
             .return_const(());
 
-        // Setup answers for `next_polarity()`
+        // Setup answers for `next_literal()`
         let mut sequence = Sequence::new();
-        for pol in polarities {
+        for (&variable, &polarity) in variables.iter().zip(polarities.iter()) {
             mock_decide_heuristic
-                .expect_next_polarity()
+                .expect_next_literal()
                 .times(1)
                 .in_sequence(&mut sequence)
-                .return_const(pol);
+                .return_const(Literal { variable, polarity });
         }
 
-        mock_decide_heuristic
-            .expect_next_polarity()
-            .returning(rand::random::<bool>);
-
-        // Setup answers for `next_variable()`
-        let mut sequence = Sequence::new();
-        for var in variables {
-            mock_decide_heuristic
-                .expect_next_variable()
-                .times(1)
-                .in_sequence(&mut sequence)
-                .return_const(var);
-        }
-
+        // Return random answers, for debugging and finding edge cases
         if true {
             mock_decide_heuristic
-                .expect_next_variable()
+                .expect_next_literal()
                 .times(..)
                 .returning(|model| {
                     let mut rng = rand::thread_rng();
+                    let polarity = rng.gen();
                     // Collect indices of unassigned variables (where model[index] is None)
                     let unassigned_indices: Vec<usize> = model
                         .iter()
@@ -566,7 +550,10 @@ mod tests {
                         })
                         .collect();
                     // Randomly select one of the unassigned indices
-                    unassigned_indices.into_iter().choose(&mut rng)
+                    unassigned_indices
+                        .into_iter()
+                        .choose(&mut rng)
+                        .map(|variable| Literal { variable, polarity })
                 });
         }
 
