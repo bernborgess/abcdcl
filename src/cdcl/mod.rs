@@ -1,68 +1,19 @@
 pub mod assignment;
 pub mod clause;
+pub mod decide_heuristics;
 pub mod literal;
 
 use assignment::Assignment;
 use clause::Clause;
+use decide_heuristics::{DecideHeuristic, RandomDecideHeuristic};
 use literal::Literal;
 
-// For random Heuristic
-use rand::prelude::IteratorRandom;
-use rand::Rng;
 use std::cmp::{max, min, Reverse};
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
-
-// For Testing
-use mockall::predicate::*;
-use mockall::*;
-
 use CdclResult::*;
 
 type Queue = VecDeque<Literal>;
 type ClauseIndex = usize;
-
-/// Defines an interface for decision heuristics.
-/// Provides methods to choose a random variable and its polarity.
-#[automock]
-pub trait DecideHeuristic {
-    /// Gets a random boolean
-    fn next_polarity(&self) -> bool;
-    /// Gets a random variable, if any exist
-    fn next_variable(&self, model: &[Option<Assignment>]) -> Option<usize>;
-}
-
-/// Implements a random decision heuristic.
-/// Uses Rust's RNG to select variable assignments.
-pub struct RandomDecideHeuristic {}
-
-impl DecideHeuristic for RandomDecideHeuristic {
-    fn next_polarity(&self) -> bool {
-        let mut rng = rand::thread_rng();
-        rng.gen()
-    }
-
-    fn next_variable(&self, model: &[Option<Assignment>]) -> Option<usize> {
-        let mut rng = rand::thread_rng();
-
-        // Collect indices of unassigned variables (where model[index] is None)
-        let unassigned_indices: Vec<usize> = model
-            .iter()
-            .enumerate()
-            .filter_map(
-                |(index, value)| {
-                    if value.is_none() {
-                        Some(index)
-                    } else {
-                        None
-                    }
-                },
-            )
-            .collect();
-
-        // Randomly select one of the unassigned indices
-        unassigned_indices.into_iter().choose(&mut rng)
-    }
-}
 
 /// Runs the CDCL solver on a given CNF formula.
 /// - Initializes the solver with a random heuristic.
@@ -509,6 +460,8 @@ mod tests {
     use core::panic;
 
     use crate::parser::read_from_string;
+    use decide_heuristics::MockDecideHeuristic;
+    use mockall::*;
 
     use super::*;
 
@@ -548,6 +501,8 @@ mod tests {
 
     #[cfg(test)]
     fn setup_mock(polarities: Vec<bool>, variables: Vec<usize>) -> MockDecideHeuristic {
+        use rand::seq::IteratorRandom;
+
         let mut mock_decide_heuristic = MockDecideHeuristic::new();
 
         // Setup answers for `next_polarity()`
