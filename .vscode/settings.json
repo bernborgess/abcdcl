@@ -5,6 +5,7 @@
         "automock",
         "backjump",
         "mockall",
-        "occurlist"
+        "occurlist",
+        "VSIDS"
     ]
 }

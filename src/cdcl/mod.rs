@@ -5,7 +5,9 @@ pub mod literal;
 
 use assignment::Assignment;
 use clause::Clause;
-use decide_heuristics::{DecideHeuristic, RandomDecideHeuristic};
+use decide_heuristics::{
+    DecideHeuristic, RandomDecideHeuristic, VariableStateIndependentDecayingSumDecideHeuristic,
+};
 use literal::Literal;
 
 use std::cmp::{max, min, Reverse};
@@ -19,7 +21,9 @@ type ClauseIndex = usize;
 /// - Initializes the solver with a random heuristic.
 /// - Returns `CdclResult` indicating SAT or UNSAT.
 pub fn run_cdcl(cnf: &[Vec<i64>], number_of_atoms: usize) -> CdclResult {
-    let mut solver = Cdcl::new(cnf, number_of_atoms, RandomDecideHeuristic {}); // Uses rust RNG
+    // let decide_heuristic = RandomDecideHeuristic {};
+    let decide_heuristic = VariableStateIndependentDecayingSumDecideHeuristic::new(number_of_atoms);
+    let mut solver = Cdcl::new(cnf, number_of_atoms, decide_heuristic); // Uses rust RNG
     solver.solve()
 }
 
@@ -104,8 +108,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             let lit = clause.literals[0];
             if self.model[lit.variable].is_none() {
                 // Add to the model
-                self.model[lit.variable] =
-                    Some(Assignment::new(lit.polarity, 0, Some(clause_index)));
+                self.model_assign(lit, Some(clause_index));
                 // Propagate it
                 to_propagate.push_back(lit);
             }
@@ -371,6 +374,9 @@ impl<H: DecideHeuristic> Cdcl<H> {
         // Add `learnt clause` to the formula clauses
         self.formula.push(learnt_clause.clone());
 
+        // Call signal used in heuristics
+        self.decide_heuristic.clause_added_signal(learnt_clause);
+
         // If there is only one literal in the clause we are done
         if learnt_clause.literals.len() < 2 {
             let lit = learnt_clause.literals[0];
@@ -408,13 +414,14 @@ impl<H: DecideHeuristic> Cdcl<H> {
 
     /// Backtracks to a given decision level, undoing assignments above it.
     fn backtrack(&mut self, b: usize) {
-        self.model.iter_mut().for_each(|oas| {
+        for (i, oas) in self.model.iter_mut().enumerate() {
             if let Some(asgnmt) = oas {
                 if asgnmt.dl > b {
                     *oas = None;
+                    self.decide_heuristic.variable_unassigned_signal(i);
                 }
             }
-        });
+        }
     }
 
     /// Chooses the next variable to assign using the heuristic.
@@ -436,6 +443,7 @@ impl<H: DecideHeuristic> Cdcl<H> {
             antecedent,
             dl: self.decision_level,
         });
+        self.decide_heuristic.variable_assigned_signal(lit.variable);
     }
 
     /// Returns the current model as a satisfying assignment if the formula is satisfiable.
@@ -504,6 +512,16 @@ mod tests {
         use rand::seq::IteratorRandom;
 
         let mut mock_decide_heuristic = MockDecideHeuristic::new();
+
+        mock_decide_heuristic
+            .expect_variable_assigned_signal()
+            .return_const(());
+        mock_decide_heuristic
+            .expect_variable_unassigned_signal()
+            .return_const(());
+        mock_decide_heuristic
+            .expect_clause_added_signal()
+            .return_const(());
 
         // Setup answers for `next_polarity()`
         let mut sequence = Sequence::new();
@@ -723,8 +741,10 @@ mod tests {
         let variables = vec![2, 6];
 
         let mock_decide_heuristic = setup_mock(polarities, variables);
+        let lits = 6;
 
-        let mut solver = Cdcl::new(&cnf, 6, mock_decide_heuristic);
+        let vsids = VariableStateIndependentDecayingSumDecideHeuristic::new(lits);
+        let mut solver = Cdcl::new(&cnf, lits, vsids);
         let result = solver.solve();
         match result {
             SAT(model) => {
@@ -778,7 +798,9 @@ mod tests {
 
         let mock_decide_heuristic = setup_mock(polarities, variables);
 
-        let mut solver = Cdcl::new(&cnf, lits, mock_decide_heuristic);
+        let vsids = VariableStateIndependentDecayingSumDecideHeuristic::new(lits);
+
+        let mut solver = Cdcl::new(&cnf, lits, vsids);
         let result = solver.solve();
         match result {
             CdclResult::SAT(model) => {
