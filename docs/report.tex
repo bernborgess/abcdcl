@@ -1,7 +1,7 @@
 \documentclass[a4paper,12pt]{article}
 
 % Include packages
-\usepackage[utf8]{inputenc}
+\usepackage[utf8x]{inputenc}
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{graphicx}
@@ -60,14 +60,69 @@ solver's performance and correctness.
 
 \section{Solver Design and Implementation}
 \label{sec:design}
-% TODO
-This section should describe the architecture and design choices of your CDCL solver. Some topics to cover:
+
+Our CDCL solver is designed with a modular architecture, focusing on clarity, correctness, and efficiency. The solver implements the Conflict-Driven Clause Learning (CDCL) algorithm, which consists of several key components: the search process, conflict analysis, backtracking, and clause learning. These components are supported by carefully chosen data structures and heuristics to ensure optimal performance.
+
+\subsection{CDCL Algorithm}
+The CDCL algorithm operates by iteratively assigning values to variables, propagating implications, and resolving conflicts. When a conflict arises, the solver performs conflict analysis to derive a learned clause, which is added to the clause database to prevent future conflicts. Backtracking is then used to undo decisions up to the appropriate decision level, and the search continues. This process repeats until either a satisfying assignment is found or the problem is proven unsatisfiable.
+
+\subsection{Data Structures}
+The solver relies on several key data structures:
 \begin{itemize}
-    \item Description of the CDCL algorithm: search process, conflict analysis, backtracking, clause learning.
-    \item Key data structures used in the solver (e.g., decision stack, implication graph, learned clauses).
-    \item Heuristics implemented (e.g., variable selection, decision ordering).
-    \item Optimizations applied (e.g., restarts, watched literals, UIP learning).
+    \item \textbf{Assignment}: Tracks the current assignment of variables, including their decision levels and antecedent (if any).
+    \item \textbf{Clause}: Represents clauses in the formula, including learned clauses derived during conflict analysis.
+    \item \textbf{Literal}: Encapsulates a variable and its polarity, used throughout the solver.
 \end{itemize}
+
+\subsection{Code Structure}
+The core solver logic resides in \texttt{cdcl/mod.rs}, where the \texttt{Cdcl} struct
+implements is methods:
+
+\begin{minted}[frame=single, linenos=true, breaklines=true, fontsize=\footnotesize]{rust}
+pub struct Cdcl<H: DecideHeuristic> {
+    pub formula: Vec<Clause>,
+    pub decision_level: usize,
+    model: Vec<Option<Assignment>>,
+    clauses_with_lit_watched: HashMap<Literal, HashSet<ClauseIndex>>,
+    decide_heuristic: H,
+}
+
+impl<H: DecideHeuristic> Cdcl<H> {
+    /// Main solving loop implementing the CDCL algorithm.
+    /// Runs unit propagation, decision-making, conflict analysis, and backtracking.
+    pub fn solve(&mut self) -> CdclResult { .. }
+
+    /// Performs unit propagation to simplify clauses.
+    /// Detects conflicts if a clause becomes empty.
+    fn unit_propagation(&mut self, to_propagate: &mut Queue) -> UnitPropagationResult { .. }
+
+    /// Analyzes conflicts to determine the backtrack level.
+    /// Returns the decision level and learned clause if applicable.
+    fn conflict_analysis(&self, conflict_clause_index: ClauseIndex) -> Option<(usize, Clause)> { .. }
+
+    /// Backtracks to a given decision level, undoing assignments above it.
+    fn backtrack(&mut self, b: usize) { .. }
+
+    /// Chooses the next variable to assign using the heuristic.
+    /// Panics if no unassigned variables remain.
+    fn decide(&mut self) -> Literal { .. }
+}
+\end{minted}
+
+The solver requires an implementation of the \texttt{DecideHeuristic} trait
+
+\begin{minted}[frame=single, linenos=true, breaklines=true, fontsize=\footnotesize]{rust}
+pub trait DecideHeuristic {
+    /// Gets a random boolean
+    fn next_polarity(&self) -> bool;
+    /// Gets a random variable, if any exist
+    fn next_variable(&self, model: &[Option<Assignment>]) -> Option<usize>;
+}
+\end{minted}
+This defines methods for variable selection, for which the \texttt{RandomDecideHeuristic} is used by default.
+Unit tests leverage both \texttt{RandomDecideHeuristic} and \texttt{MockDecideHeuristic} to validate correctness.
+
+For parsing, we utilize the \texttt{dimacs} crate \cite{DimacsCrate}, integrated into \texttt{parser.rs}.
 
 \section{Testing and Evaluation}
 
