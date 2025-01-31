@@ -12,3 +12,6 @@ error.log
 # Needed for unit test
 !dubois20.cnf
 !aim-100-1_6-yes1-1.cnf
+
+# Testing output
+results.tex

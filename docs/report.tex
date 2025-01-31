@@ -1,7 +1,7 @@
 \documentclass[a4paper,12pt]{article}
 
 % Include packages
-\usepackage[utf8]{inputenc}
+\usepackage[utf8x]{inputenc}
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{graphicx}
@@ -9,104 +9,246 @@
 \usepackage{geometry}
 \usepackage{fancyhdr}
 \usepackage{lipsum}
-\usepackage{minted}  % For source code formatting
+\usepackage{minted}
 
 % Set the page margins
 \geometry{top=1in, bottom=1in, left=1in, right=1in}
 
 % Fancy header
 \pagestyle{fancy}
+\setlength{\headheight}{14.49998pt}
 \fancyhead[L]{CDCL Solver Report}
 \fancyhead[R]{Date}
 
-\title{Experimental Evaluation and Implementation of a Conflict-Driven Clause Learning (CDCL) Solver}
+\title{ABCDCL - an implementation of CDCL with two watched literals in Rust\\
+{\footnotesize Course Project of DCC831 Theory and Practice of SMT Solving}
+}
 \author{Atila Carvalho \& Bernardo Borges}
-\date{\today}
+\date{January 27, 2025}
 
 \begin{document}
 
 \maketitle
-
-\begin{abstract}
-    This report presents the implementation and experimental evaluation of a Conflict-Driven Clause Learning (CDCL) solver. The solver is designed to efficiently solve Boolean satisfiability problems (SAT) by using various optimization techniques and heuristics. The report describes the solver’s architecture, its key features, and presents experimental results demonstrating its performance on a set of benchmark problems.
-\end{abstract}
 
 \tableofcontents
 \newpage
 
 \section{Introduction}
 \label{sec:introduction}
-The introduction should provide a general overview of the SAT problem and the importance of CDCL solvers. You can include the following points:
-\begin{itemize}
-    \item Background on SAT and its importance in various fields (e.g., verification, optimization, artificial intelligence).
-    \item Overview of CDCL solvers and their key concepts.
-    \item Brief description of the objectives of the project and the structure of the report.
-\end{itemize}
+
+This report presents our course project for \textit{DCC831 - Theory and Practice of SMT Solving},
+where we implemented and evaluated a modern SAT solver based on the Conflict-Driven Clause Learning
+(CDCL) algorithm \cite{CdclAlgorithm}. Through this implementation, we explored both the theoretical
+foundations and practical challenges of building an efficient SAT solver, gaining valuable insights
+into the complexities of state-of-the-art approaches.
+
+The CDCL algorithm incorporates several key concepts covered in the course, such as unit propagation,
+clause learning, and non-chronological backtracking. Understanding these principles was essential not
+only for implementing the solver but also for debugging and refining its performance. Throughout the
+development process, we wrote extensive tests to verify correctness and experimented with different
+heuristics to optimize decision-making.
+
+We chose Rust \cite{RustLang} as our implementation language due to its strong emphasis on memory
+safety, performance, and modern software engineering practices. Additionally, Rust is the primary
+language used in \textit{Carcara} \cite{Carcara}, a proof checker we have been working with, making
+it a natural choice for this project.
+
+To evaluate our solver, we developed scripts that automatically download SAT benchmarks \cite{SatBenchmarks}
+in the DIMACS format and run them against both our implementation and the widely used \textit{MiniSat}
+solver \cite{Minisat}. The results are logged and compared, providing an empirical analysis of our
+solver's performance and correctness.
 
 \section{Solver Design and Implementation}
 \label{sec:design}
-This section should describe the architecture and design choices of your CDCL solver. Some topics to cover:
+
+Our CDCL solver is designed with a modular architecture, focusing on clarity, correctness, and efficiency. The solver implements the Conflict-Driven Clause Learning (CDCL) algorithm, which consists of several key components: the search process, conflict analysis, backtracking, and clause learning. These components are supported by carefully chosen data structures and heuristics to ensure optimal performance.
+
+\subsection{CDCL Algorithm}
+The CDCL algorithm operates by iteratively assigning values to variables, propagating implications, and resolving conflicts. When a conflict arises, the solver performs conflict analysis to derive a learned clause, which is added to the clause database to prevent future conflicts. Backtracking is then used to undo decisions up to the appropriate decision level, and the search continues. This process repeats until either a satisfying assignment is found or the problem is proven unsatisfiable.
+
+\subsection{Data Structures}
+The solver relies on several key data structures:
 \begin{itemize}
-    \item Description of the CDCL algorithm: search process, conflict analysis, backtracking, clause learning.
-    \item Key data structures used in the solver (e.g., decision stack, implication graph, learned clauses).
-    \item Heuristics implemented (e.g., variable selection, decision ordering).
-    \item Optimizations applied (e.g., restarts, watched literals, UIP learning).
+    \item \textbf{Assignment}: Tracks the current assignment of variables, including their decision levels and antecedent (if any).
+    \item \textbf{Clause}: Represents clauses in the formula, including learned clauses derived during conflict analysis.
+    \item \textbf{Literal}: Encapsulates a variable and its polarity, used throughout the solver.
 \end{itemize}
 
-\section{Experimental Setup}
-\label{sec:experiment}
-In this section, describe the experimental setup used to evaluate the solver. Include:
+\subsection{Code Structure}
+The core solver logic resides in \texttt{cdcl/mod.rs}, where the \texttt{Cdcl} struct
+implements is methods:
+
+\begin{minted}[frame=single, linenos=true, breaklines=true, fontsize=\footnotesize]{rust}
+pub struct Cdcl<H: DecideHeuristic> {
+    pub formula: Vec<Clause>,
+    pub decision_level: usize,
+    model: Vec<Option<Assignment>>,
+    clauses_with_lit_watched: HashMap<Literal, HashSet<ClauseIndex>>,
+    decide_heuristic: H,
+}
+
+impl<H: DecideHeuristic> Cdcl<H> {
+    /// Main solving loop implementing the CDCL algorithm.
+    /// Runs unit propagation, decision-making, conflict analysis, and backtracking.
+    pub fn solve(&mut self) -> CdclResult { .. }
+
+    /// Performs unit propagation to simplify clauses.
+    /// Detects conflicts if a clause becomes empty.
+    fn unit_propagation(&mut self, to_propagate: &mut Queue) -> UnitPropagationResult { .. }
+
+    /// Analyzes conflicts to determine the backtrack level.
+    /// Returns the decision level and learned clause if applicable.
+    fn conflict_analysis(&self, conflict_clause_index: ClauseIndex) -> Option<(usize, Clause)> { .. }
+
+    /// Backtracks to a given decision level, undoing assignments above it.
+    fn backtrack(&mut self, b: usize) { .. }
+
+    /// Chooses the next variable to assign using the heuristic.
+    /// Panics if no unassigned variables remain.
+    fn decide(&mut self) -> Literal { .. }
+}
+\end{minted}
+
+The solver requires an implementation of the \texttt{DecideHeuristic} trait
+
+\begin{minted}[frame=single, linenos=true, breaklines=true, fontsize=\footnotesize]{rust}
+pub trait DecideHeuristic {
+    /// Gets a random boolean
+    fn next_polarity(&self) -> bool;
+    /// Gets a random variable, if any exist
+    fn next_variable(&self, model: &[Option<Assignment>]) -> Option<usize>;
+}
+\end{minted}
+This defines methods for variable selection, for which the \texttt{RandomDecideHeuristic} is used by default.
+Unit tests leverage both \texttt{RandomDecideHeuristic} and \texttt{MockDecideHeuristic} to validate correctness.
+
+For parsing, we utilize the \texttt{dimacs} crate \cite{DimacsCrate}, integrated into \texttt{parser.rs}.
+
+\section{Testing and Evaluation}
+
+For the evaluation of our CDCL solver, we used a set of benchmark problems in DIMACS
+format from the SATLIB repository. Our solver was compared against MiniSat, a
+well-established SAT solver, in terms of correctness and runtime.
+
+\subsection{Experimental Setup}
+All experiments were conducted on a laptop with the following hardware and software configuration:
+
 \begin{itemize}
-    \item Description of the SAT instances used in the experiments (e.g., DIMACS benchmark formats, problem types).
-    \item Hardware and software environment for running experiments (e.g., processor, memory, operating system, libraries).
-    \item Metrics used for evaluating solver performance (e.g., runtime, number of conflicts, memory usage, number of clauses learned).
+    \item \textbf{Operating System:} Arch Linux (Kernel 6.12.10)
+    \item \textbf{Host:} ASUS VivoBook X512FJ
+    \item \textbf{Processor:} Intel Core i7-8565U (8 threads, up to 4.60GHz)
+    \item \textbf{RAM:} 8GB (usable: 7.8GB)
+    \item \textbf{GPU:} Intel UHD Graphics 620 (Whiskey Lake) + NVIDIA GeForce MX230
 \end{itemize}
 
-\section{Results and Evaluation}
-\label{sec:results}
-This section should present the results of your experiments and analyze the performance of your solver. Topics to include:
-\begin{itemize}
-    \item Summary of experimental results with tables and figures (e.g., performance on different benchmarks, comparison with other solvers if applicable).
-    \item Analysis of the solver’s strengths and weaknesses based on the results.
-    \item Discussion on the impact of various optimizations and heuristics on solver performance.
-\end{itemize}
+\subsection{Results}
+For each benchmark instance, we recorded the solver’s result (SAT or UNSAT) and its
+execution time in milliseconds. The results were then compared against MiniSat to
+verify correctness and measure performance. The summarized results are presented in
+Table~\ref{tab:results}, comparing Avg Time to solve in \textit{ms} for each benchmark
+and it's correctness overall.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|c|c|c|c|c|}
+        \hline
+        \textbf{Benchmark} & \textbf{ABCDCL Time} & \textbf{MiniSat Time} & \textbf{Results } \\
+        \hline
+        dubois             & 5020                 & 2                     & 10 / 0 / 3 / 13   \\
+        aim                & 109                  & 1                     & 72 / 0 / 0 / 72   \\
+        jnh                & 275                  & 2                     & 50 / 0 / 0 / 50   \\
+        pj1-tests/sat      & 1697                 & 1                     & 22 / 2 / 0 / 24   \\
+        pj1-tests/unsat    & 4198                 & 2                     & 23 / 1 / 1 / 25   \\
+        \hline
+    \end{tabular}
+    \caption{Performance comparison of ABCDCL and MiniSat across benchmark families. Results is a
+        counter of \texttt{(PASS/FAIL/TIME/TOTAL)}. The timeout used was $60$ seconds.}
+    \label{tab:results}
+\end{table}
+
+\subsection{Discussion}
+The majority of results obtained from our solver matched those of MiniSat, verifying its correctness,
+albeit for 3 cases that were parse errors, discussed in section 4.  In terms of performance, our
+solver performed poorly against minisat, timing out in 3 cases of `dubois' and 1 of `pj1-tests/unsat'
+A potential reason for this performance difference is the naive (random) heuristic used in ours
+but also could be on memory management strategies.
+Future optimizations may focus on improving clause learning efficiency and branching heuristics to
+further reduce solving time while maintaining correctness.
 
 \section{Challenges and Lessons Learned}
 \label{sec:challenges}
-This section should discuss the challenges you faced during the implementation and evaluation of the solver, as well as the lessons learned:
-\begin{itemize}
-    \item Difficulties in implementing specific features or algorithms.
-    \item Insights gained from debugging and performance tuning.
-    \item How certain design choices impacted the solver’s efficiency and correctness.
-\end{itemize}
+
+During the development and evaluation of our CDCL solver, we encountered several challenges that
+required careful debugging, algorithmic refinements, and adaptations to external dependencies.
+This section outlines the key difficulties faced and the lessons learned throughout the process.
+
+One of the initial challenges was correctly following the CDCL algorithm as described in the
+reference materials \cite{CdclAlgorithm}. The visual representations in the slides were
+sometimes ambiguous, making it unclear what exact computations were being performed at certain
+stages. A notable example was the selection of the next watched literal, which we initially
+misunderstood due to implicit details, actually needs to \textit{loop back around} sometimes,
+not explicitly illustrated in the reference diagrams.
+
+Managing literals and their negations efficiently within the codebase also became a source of
+confusion. The tracking logic became increasingly complex, especially when handling clause
+propagation and backtracking. To address this, we refined our data structures and improved
+the organization of literals within the solver, with the separate \textbf{Literal} struct,
+making operations more transparent and reducing the likelihood of errors.
+
+Debugging the solver proved to be another major challenge, particularly when implementing the
+decision-making functionality. The need to test with \textit{determinism} a methods that uses
+randomness led us to introduce the \texttt{DecideHeuristic} abstraction. This allowed us to
+have both a standard version that made random assignments and a test-oriented version that could
+be precisely controlled. For the latter, we used the \texttt{mockall} crate, enabling us to
+define specific values for the \texttt{decide} function during unit testing, what allowed to
+write and diagnose issues related to decision strategies.
+
+For more complex debugging scenarios, especially those involving intricate edge cases, we had
+to configure a Rust debugger using \textbf{LLDB} \cite{LLDB}. This setup allowed us to execute
+both the solver binary and individual unit tests in a step-by-step manner, analyzing control flow,
+and stepping into function calls, we were able to pinpoint the root causes of unexpected behavior
+like infinite loops and subtle logical errors that were difficult to catch through standard logging.
+
+Additionally, we encountered a problem with the \texttt{dimacs} crate \cite{DimacsCrate}, which
+we used to parse input problems in the DIMACS format \cite{DimacsFormat}. The issue arose when
+comments (lines starting with the character \texttt{c}) appeared in the middle of clause definitions,
+leading to parsing failures. Another edge case involved empty clauses, which also caused the parser to fail.
+
+Ideally, we would have forked the crate and extended its functionality to correctly handle these cases.
+However, due to time constraints, we were unable to implement these fixes. As a result, certain test cases,
+namely \texttt{sat10.cnf}, \texttt{sat12.cnf} and \texttt{false.cnf}, are expected to fail due to parse errors.
+
+Furthermore, we are currently working on implementing the VSIDS decision heuristic to improve solver performance.
+Unfortunately, this feature will not be ready in time for this report, but we plan to update the
+repository once it is completed.
 
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
-In the conclusion, summarize the key findings and suggest potential improvements:
-\begin{itemize}
-    \item Recap of the objectives and how they were achieved.
-    \item Summary of the solver’s performance and main takeaways.
-    \item Suggestions for future work (e.g., improvements to heuristics, additional optimizations, new features to implement).
-\end{itemize}
+This project proved to be significantly more challenging than anticipated, primarily due to the nuanced
+balance between correctness and efficiency. Through the process, we gained a deep understanding of both
+the CDCL algorithm and the intricacies of implementing it in Rust. Despite the pressure, we enjoyed developing
+creative solutions, such as implementing unit tests, mocks, and scripts, comparing our solver with an
+existing one \cite{Minisat}, and overcoming challenges with the parser crate. We were heavily inspired
+by a Python implementation \cite{PythonCDCL}, and in understanding its code, we forked and enhanced it
+by adding strict typing, which was later merged into the original repository \url{https://github.com/Kienyew/CDCL-SAT-Solver-from-Scratch/pull/1}.
 
-\section{References}
-\label{sec:references}
-Include all the references you used throughout your report. Example:
-\begin{itemize}
-    \item \textit{J. Conflicts et al., "Improving SAT solvers," Journal of Algorithms, 2010.}
-    \item \textit{S. Solver, "Optimizations in CDCL solvers," SAT Conference Proceedings, 2015.}
-\end{itemize}
+For future work, we plan to further refine the solver by implementing the VSIDS decision heuristic,
+which is expected to enhance performance. We also aim to fix the issues related to the DIMACS parser,
+ensuring that the solver can handle all edge cases correctly. Overall, this project was a rewarding
+challenge that deepened our understanding of both SAT solving and Rust programming.
 
-\newpage
-\appendix
-\section{Appendix: Source Code}
-\label{sec:appendix}
-Include the relevant source code snippets or provide a link to the full implementation if it's hosted in a public repository (e.g., GitHub). For code snippets:
-\begin{minted}[frame=single, linenos=true, breaklines=true, fontsize=\footnotesize]{rust}
-fn main() {
-    println!("Hello, CDCL Solver!");
-    // Your implementation here
-}
-\end{minted}
+\begin{thebibliography}{00}
+    \bibitem{CdclAlgorithm}         A. Oliveras, E. Rodriguez-Carbonell ``From DPLL to CDCL SAT solvers'', January of 2025, Available at \url{https://www.cs.upc.edu/~oliveras/LAI/cdcl.pdf}.
+    \bibitem{RustLang}              ``The Rust Reference'', January of 2025, Available at \url{https://doc.rust-lang.org/reference/index.html}.
+    \bibitem{Carcara}               B. Andreotti, H. Lachnitt, H. Barbosa ``Carcara: An Efficient Proof Checker and Elaborator for SMT Proofs in the Alethe Format'', April of 2023, Available at \url{https://link.springer.com/chapter/10.1007/978-3-031-30823-9\_19}.
+    \bibitem{SatBenchmarks}         ``SATLIB - Benchmark Problems'', January of 2025, Available at \url{https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html}.
+    \bibitem{AbcdclGithub}          B. Borges, A. Carvalho ``Atila - Bernardo - CDCL SAT Solver'', January of 2025, Available at \url{https://github.com/bernborgess/abcdcl}.
+    \bibitem{Minisat}               N. Eén, N. Sörensson ``The MiniSat Page'', January of 2025, Available at \url{http://minisat.se/MiniSat.html}.
+    \bibitem{VSIDS}                 M. Moskewicz, C. Madigan, Y. Zhao, L. Zhang, S. Malik ``Chaff: Engineering an Efficient SAT Solver'', January of 2025, Available at \url{https://www.princeton.edu/~chaff/publication/DAC2001v56.pdf}.
+    \bibitem{LLDB}                  ``The LLDB Debugger'', January of 2025, Available at \url{https://lldb.llvm.org}.
+    \bibitem{DimacsCrate}           ``Crate dimacs - The parser facility for parsing .cnf and .sat files as specified in the DIMACS format specification'', January of 2025, Available at \url{https://docs.rs/dimacs/0.2.0/dimacs/index.html}.
+    \bibitem{DimacsFormat}          ``DIMACS CNF Format'', January of 2025, Available at \url{https://satcompetition.github.io//2009/format-benchmarks2009.html}.
+    \bibitem{PythonCDCL}            ``CDCL SAT Solver from Scratch in Python'', January of 2025, Available at \url{https://github.com/Kienyew/CDCL-SAT-Solver-from-Scratch}.
+\end{thebibliography}
 
 \end{document}

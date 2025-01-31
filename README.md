@@ -32,20 +32,20 @@ p cnf 3 2
 
 The output consists of two lines:
 
-1. The first line is `SAT` or `UNSAT`.
-2. If satisfiable, the second line is a space-separated list of literals in the satisfying assignment, ending with `0`.
+1. The first line is `s SATISFIABLE` or `s UNSATISFIABLE`.
+2. If satisfiable, the second line is a space-separated list of literals in the satisfying assignment, starting with `v`, ending with `0`.
 
 Example (if satisfiable):
 
 ```
-SAT
--1 -2 3 0
+s SATISFIABLE
+v -1 -2 3 0
 ```
 
 Example (if unsatisfiable):
 
 ```
-UNSAT
+s UNSATISFIABLE
 ```
 
 ## Usage
@@ -64,7 +64,7 @@ You can test the solver using benchmark files from the [SATLIB](http://www.satli
 cd test
 ./download-minisat.sh
 ./download-tests.sh
-./run.sh
+./all.sh
 ```
 
 ## References
