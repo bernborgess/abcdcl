@@ -38,11 +38,12 @@ for bm in "${benchmarks[@]}"; do
             abcdcl_outfile="./out/${file}.output"
             abcdcl_errfile="./out/${file}.err.log"
             timeout "$TIME_LIMIT" cargo run -q -- "$file" > "$abcdcl_outfile" 2>$abcdcl_errfile
-            if [ $? -eq 124 ]; then
+            exit_code=$? # Capture exit code immediately
+            if [ $exit_code -eq 124 ]; then
                 echo -e "${RED_BG}TIMEOUT${RED} $file${RESET}"
                 continue
             fi
-            if [ $? -ne 0 ]; then
+            if [ $exit_code -ne 0 ]; then
                 echo "Error: cargo run failed for $file. Stopping script."
                 echo -e "\n====================================================\n"
                 cat error.log
