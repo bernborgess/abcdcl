@@ -58,22 +58,6 @@ in the DIMACS format and run them against both our implementation and the widely
 solver \cite{Minisat}. The results are logged and compared, providing an empirical analysis of our
 solver's performance and correctness.
 
-% While we faced numerous challenges throughout this project, including algorithmic misunderstandings
-% and debugging complexities, this experience has been highly educational. In the following sections,
-% we describe our implementation, the difficulties encountered, the lessons learned, and the experimental evaluation of our solver.
-
-% \section{Introduction}
-% \label{sec:introduction}
-% This is the course project of "DCC831 Theory and Practice of SMT Solving"
-% In here we had the opportunity to see in practice the implementation insights and
-% difficulties of an state-of-the-art sat solver.
-% The CDCL algorithm takes on many of the concepts learnt in this course, which were paramount
-% for implementing and debugging, features and tests.
-% We used rust for it's modern, memory safe and object of our work at Carcara proof checker.
-% We had many difficulties that will be shown but this was a major learning experience.
-% We also created some scripts that automatically download benchmarks in the DIMACS format and
-% run our project against the result of minisat, logging the results.
-
 \section{Solver Design and Implementation}
 \label{sec:design}
 % TODO
@@ -84,7 +68,6 @@ This section should describe the architecture and design choices of your CDCL so
     \item Heuristics implemented (e.g., variable selection, decision ordering).
     \item Optimizations applied (e.g., restarts, watched literals, UIP learning).
 \end{itemize}
-
 
 \section{Testing and Evaluation}
 
@@ -138,28 +121,6 @@ differences, implementation optimizations, and memory management strategies.
 Future optimizations may focus on improving clause learning efficiency and branching heuristics to
 further reduce solving time while maintaining correctness.
 
-\section{Experimental Setup}
-\label{sec:experiment}
-% TODO
-In this section, describe the experimental setup used to evaluate the solver. Include:
-\begin{itemize}
-    \item Description of the SAT instances used in the experiments (e.g., DIMACS benchmark formats, problem types).
-    \item Hardware and software environment for running experiments (e.g., processor, memory, operating system, libraries).
-    \item Metrics used for evaluating solver performance (e.g., runtime, number of conflicts, memory usage, number of clauses learned).
-          % How did we setup the testing?
-\end{itemize}
-
-\section{Results and Evaluation}
-\label{sec:results}
-% TODO
-This section should present the results of your experiments and analyze the performance of your solver. Topics to include:
-\begin{itemize}
-    \item Summary of experimental results with tables and figures (e.g., performance on different benchmarks, comparison with other solvers if applicable).
-    \item Analysis of the solver’s strengths and weaknesses based on the results.
-    \item Discussion on the impact of various optimizations and heuristics on solver performance.
-          % How many of the tests passed? What was the biggest TIMEOUT needed?
-          % Did the VSIDS heuristic help?
-\end{itemize}
 
 \section{Challenges and Lessons Learned}
 \label{sec:challenges}
@@ -198,28 +159,30 @@ like infinite loops and subtle logical errors that were difficult to catch throu
 Additionally, we encountered a problem with the \texttt{dimacs} crate \cite{DimacsCrate}, which
 we used to parse input problems in the DIMACS format \cite{DimacsFormat}. The issue arose when
 comments (lines starting with the character \texttt{c}) appeared in the middle of clause definitions,
-leading to parsing failures.
-% TODO: Check if this is going to work...
-To resolve this, we had to fork the crate and extend its functionality to correctly handle comments
-interspersed within clauses. Another edge case is where an empty clause was also causing the parser
-to fail. Our modifications ensured that such cases were handled correctly, preventing unintended
-crashes.
+leading to parsing failures. Another edge case involved empty clauses, which also caused the parser to fail.
 
-% TODO: Conclusion?
-% These challenges reinforced the importance of precise algorithmic understanding, well-structured
-% abstractions, and robust debugging tools. The lessons learned throughout this process not only
-% improved our solver’s correctness and efficiency but also deepened our understanding of SAT
-% solving techniques and Rust's debugging ecosystem.
+Ideally, we would have forked the crate and extended its functionality to correctly handle these cases.
+However, due to time constraints, we were unable to implement these fixes. As a result, certain test cases,
+namely \texttt{sat10.cnf}, \texttt{sat12.cnf} and \texttt{false.cnf}, are expected to fail due to parse errors.
+
+Furthermore, we are currently working on implementing the VSIDS decision heuristic to improve solver performance.
+Unfortunately, this feature will not be ready in time for this report, but we plan to update the
+repository once it is completed.
 
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
-% TODO
-In the conclusion, summarize the key findings and suggest potential improvements:
-\begin{itemize}
-    \item Recap of the objectives and how they were achieved.
-    \item Summary of the solver’s performance and main takeaways.
-    \item Suggestions for future work (e.g., improvements to heuristics, additional optimizations, new features to implement).
-\end{itemize}
+This project proved to be significantly more challenging than anticipated, primarily due to the nuanced
+balance between correctness and efficiency. Through the process, we gained a deep understanding of both
+the CDCL algorithm and the intricacies of implementing it in Rust. Despite the pressure, we enjoyed developing
+creative solutions, such as implementing unit tests, mocks, and scripts, comparing our solver with an
+existing one \cite{Minisat}, and overcoming challenges with the parser crate. We were heavily inspired
+by a Python implementation \cite{PythonCDCL}, and in understanding its code, we forked and enhanced it
+by adding strict typing, which was later merged into the original repository \url{https://github.com/Kienyew/CDCL-SAT-Solver-from-Scratch/pull/1}.
+
+For future work, we plan to further refine the solver by implementing the VSIDS decision heuristic,
+which is expected to enhance performance. We also aim to fix the issues related to the DIMACS parser,
+ensuring that the solver can handle all edge cases correctly. Overall, this project was a rewarding
+challenge that deepened our understanding of both SAT solving and Rust programming.
 
 \begin{thebibliography}{00}
     \bibitem{CdclAlgorithm}         A. Oliveras, E. Rodriguez-Carbonell ``From DPLL to CDCL SAT solvers'', January of 2025, Available at \url{https://www.cs.upc.edu/~oliveras/LAI/cdcl.pdf}.
@@ -232,19 +195,7 @@ In the conclusion, summarize the key findings and suggest potential improvements
     \bibitem{LLDB}                  ``The LLDB Debugger'', January of 2025, Available at \url{https://lldb.llvm.org}.
     \bibitem{DimacsCrate}           ``Crate dimacs - The parser facility for parsing .cnf and .sat files as specified in the DIMACS format specification'', January of 2025, Available at \url{https://docs.rs/dimacs/0.2.0/dimacs/index.html}.
     \bibitem{DimacsFormat}          ``DIMACS CNF Format'', January of 2025, Available at \url{https://satcompetition.github.io//2009/format-benchmarks2009.html}.
+    \bibitem{PythonCDCL}            ``CDCL SAT Solver from Scratch in Python'', January of 2025, Available at \url{https://github.com/Kienyew/CDCL-SAT-Solver-from-Scratch}.
 \end{thebibliography}
-
-\newpage
-\appendix
-\section{Appendix: Source Code}
-\label{sec:appendix}
-% TODO or REMOVE
-Include the relevant source code snippets or provide a link to the full implementation if it's hosted in a public repository (e.g., GitHub). For code snippets:
-\begin{minted}[frame=single, linenos=true, breaklines=true, fontsize=\footnotesize]{rust}
-fn main() {
-    println!("Hello, CDCL Solver!");
-    // Your implementation here
-}
-\end{minted}
 
 \end{document}
