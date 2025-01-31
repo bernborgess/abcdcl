@@ -85,6 +85,59 @@ This section should describe the architecture and design choices of your CDCL so
     \item Optimizations applied (e.g., restarts, watched literals, UIP learning).
 \end{itemize}
 
+
+\section{Testing and Evaluation}
+
+For the evaluation of our CDCL solver, we used a set of benchmark problems in DIMACS
+format from the SATLIB repository. Our solver was compared against MiniSat, a
+well-established SAT solver, in terms of correctness and runtime.
+
+\subsection{Experimental Setup}
+All experiments were conducted on a laptop with the following hardware and software configuration:
+
+\begin{itemize}
+    \item \textbf{Operating System:} Arch Linux (Kernel 6.12.10)
+    \item \textbf{Host:} ASUS VivoBook X512FJ
+    \item \textbf{Processor:} Intel Core i7-8565U (8 threads, up to 4.60GHz)
+    \item \textbf{RAM:} 8GB (usable: 7.8GB)
+    \item \textbf{GPU:} Intel UHD Graphics 620 (Whiskey Lake) + NVIDIA GeForce MX230
+\end{itemize}
+
+\subsection{Results}
+For each benchmark instance, we recorded the solver’s result (SAT or UNSAT) and its
+execution time in milliseconds. The results were then compared against MiniSat to
+verify correctness and measure performance. The summarized results are presented in
+Table~\ref{tab:results}, comparing Avg Time to solve in \textit{ms} for each benchmark
+and it's correctness overall.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|c|c|c|c|c|}
+        \hline
+        \textbf{Benchmark} & \textbf{ABCDCL Time} & \textbf{MiniSat Time} & \textbf{Results } \\
+        \hline
+        % TODO
+        jnh                & 397                  & 0                     & 50 / 0 / 0 / 50   \\
+        jnh                & 492                  & 2                     & 50 / 0 / 0 / 50   \\
+
+        \hline
+    \end{tabular}
+    \caption{Performance comparison of ABCDCL and MiniSat across benchmark families. Results is a
+        counter of \texttt{(PASS/FAIL/TIME/TOTAL)}. The timeout used was $60$ seconds.}
+    \label{tab:results}
+\end{table}
+
+
+
+\subsection{Discussion}
+% TODO
+The majority of results obtained from our solver matched those of MiniSat, verifying its correctness.
+In terms of performance, our solver performed comparably on smaller instances but showed increased
+runtime for larger benchmarks. Potential reasons for this performance difference include heuristic
+differences, implementation optimizations, and memory management strategies.
+Future optimizations may focus on improving clause learning efficiency and branching heuristics to
+further reduce solving time while maintaining correctness.
+
 \section{Experimental Setup}
 \label{sec:experiment}
 % TODO
