@@ -1,5 +1,6 @@
 #!/bin/bash
 cd test 2>/dev/null
+mkdir -p out
 cargo build -q 2>/dev/null
 
 # Define ANSI color codes
@@ -48,7 +49,10 @@ for bm in "${benchmarks[@]}"; do
                 echo -e "\n====================================================\n"
                 exit 1
             fi
-            abcdcl_tail=$(tail "$abcdcl_outfile" -n 1)
+            abcdcl_head=$(head "$abcdcl_outfile" -n 1)
+            # Normalize abcdcl output to `SAT` or `UNSAT`
+            abcdcl_head=$(echo "$abcdcl_head" | sed 's/s SATISFIABLE/SAT/; s/s UNSATISFIABLE/UNSAT/')
+
 
             # minisat for comparison
             minisat_outfile="./out/${file}.minisat_output"
@@ -64,11 +68,11 @@ for bm in "${benchmarks[@]}"; do
 
 
             # Check that first line is the same
-            if [ "$minisat_head" == "$abcdcl_tail" ]; then
+            if [ "$minisat_head" == "$abcdcl_head" ]; then
                 echo -e "${GREEN_BG}PASS${GREEN} $file${RESET}"
                 pass_count=$((pass_count + 1))
             else
-                echo -e "${RED_BG}FAIL${RED} $file: expected $minisat_head got $abcdcl_tail${RESET}"
+                echo -e "${RED_BG}FAIL${RED} $file: expected $minisat_head got $abcdcl_head${RESET}"
             fi
         done
     else
