@@ -17,7 +17,7 @@ RED_BG="\033[0;41m"
 RESET="\033[0;0m"
 
 # Define timeout in seconds
-TIMEOUT=12
+TIMEOUT=60
 echo -e "Running tests with timeout of ${TIMEOUT}s"
 
 # Check if ./minisat exists
@@ -30,11 +30,8 @@ fi
 # MINISAT_USE_CACHE=true
 
 # Define test sets
-# benchmarks=("dubois" "aim" "jnh")
-# folders=("pj1-tests/sat" "pj1-tests/unsat")
-benchmarks=("jnh")
-folders=()
-
+benchmarks=("dubois" "aim" "jnh")
+folders=("pj1-tests/sat" "pj1-tests/unsat")
 
 # Initialize global counters
 global_pass_count=0
@@ -87,7 +84,7 @@ for test_set in "${benchmarks[@]}" "${folders[@]}"; do
 
         if [ $exit_code -eq 124 ]; then # TIMEOUT
             echo -e "${YELLOW_BG}TIME${YELLOW} $file took too long${RESET}"
-            timeout_count=$((total_count + 1))
+            timeout_count=$((timeout_count + 1))
             total_count=$((total_count + 1))
             continue
         elif [ $exit_code -ne 0 ]; then
@@ -121,7 +118,7 @@ for test_set in "${benchmarks[@]}" "${folders[@]}"; do
             pass_count=$((pass_count + 1))
         else
             echo -e "${RED_BG}FAIL${RED} $file: expected $minisat_head got $abcdcl_head${RESET}"
-            pass_count=$((fail_count + 1))
+            fail_count=$((fail_count + 1))
         fi
     done
 
