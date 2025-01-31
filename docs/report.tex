@@ -154,10 +154,11 @@ and it's correctness overall.
         \hline
         \textbf{Benchmark} & \textbf{ABCDCL Time} & \textbf{MiniSat Time} & \textbf{Results } \\
         \hline
-        % TODO
-        jnh                & 397                  & 0                     & 50 / 0 / 0 / 50   \\
-        jnh                & 492                  & 2                     & 50 / 0 / 0 / 50   \\
-
+        dubois             & 5020                 & 2                     & 10 / 0 / 3 / 13   \\
+        aim                & 109                  & 1                     & 72 / 0 / 0 / 72   \\
+        jnh                & 275                  & 2                     & 50 / 0 / 0 / 50   \\
+        pj1-tests/sat      & 1697                 & 1                     & 22 / 2 / 0 / 24   \\
+        pj1-tests/unsat    & 4198                 & 2                     & 23 / 1 / 1 / 25   \\
         \hline
     \end{tabular}
     \caption{Performance comparison of ABCDCL and MiniSat across benchmark families. Results is a
@@ -165,17 +166,14 @@ and it's correctness overall.
     \label{tab:results}
 \end{table}
 
-
-
 \subsection{Discussion}
-% TODO
-The majority of results obtained from our solver matched those of MiniSat, verifying its correctness.
-In terms of performance, our solver performed comparably on smaller instances but showed increased
-runtime for larger benchmarks. Potential reasons for this performance difference include heuristic
-differences, implementation optimizations, and memory management strategies.
+The majority of results obtained from our solver matched those of MiniSat, verifying its correctness,
+albeit for 3 cases that were parse errors, discussed in section 4.  In terms of performance, our
+solver performed poorly against minisat, timing out in 3 cases of `dubois' and 1 of `pj1-tests/unsat'
+A potential reason for this performance difference is the naive (random) heuristic used in ours
+but also could be on memory management strategies.
 Future optimizations may focus on improving clause learning efficiency and branching heuristics to
 further reduce solving time while maintaining correctness.
-
 
 \section{Challenges and Lessons Learned}
 \label{sec:challenges}

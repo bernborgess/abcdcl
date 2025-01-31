@@ -90,6 +90,8 @@ for test_set in "${benchmarks[@]}" "${folders[@]}"; do
         elif [ $exit_code -ne 0 ]; then
             echo -e "${RED_BG}FAIL${RED} $file: error code $exit_code${RESET}"
             cat error.log
+            fail_count=$((fail_count + 1))
+            total_count=$((total_count + 1))
             continue
         fi
 
