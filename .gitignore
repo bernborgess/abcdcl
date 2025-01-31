@@ -342,3 +342,4 @@ TSWLatexianTemp*
 
 # Lets see the report :)
 !docs/report.pdf
+*.zip
