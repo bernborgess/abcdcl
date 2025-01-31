@@ -14,7 +14,8 @@ fn main() {
     let result = run_cdcl(&cnf, lits);
     match result {
         CdclResult::SAT(model) => {
-            println!("SAT");
+            println!("s SATISFIABLE");
+            print!("v ");
             for (i, b) in model.iter().enumerate() {
                 if *b {
                     print!("{} ", i + 1);
@@ -24,6 +25,6 @@ fn main() {
             }
             println!("0");
         }
-        CdclResult::UNSAT => println!("\nUNSAT"),
+        CdclResult::UNSAT => println!("s UNSATISFIABLE"),
     }
 }
